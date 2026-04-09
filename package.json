@@ -1,0 +1,62 @@
+{
+  "name": "vormex-web",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "npx -y node@20.20.2 node_modules/next/dist/bin/next dev",
+    "build": "npx -y node@20.20.2 node_modules/next/dist/bin/next build",
+    "start": "npx -y node@20.20.2 node_modules/next/dist/bin/next start",
+    "lint": "eslint",
+    "lint:focused": "eslint src/proxy.ts src/lib/routing/authProxy.ts src/lib/api/client.ts src/lib/api/request.ts src/lib/api/accountability.ts src/lib/api/circles.ts src/app/accountability/page.tsx src/hooks/useVariableRewards.ts tests/*.test.ts",
+    "test": "npx -y node@20.20.2 node_modules/tsx/dist/cli.mjs --test tests/*.test.ts",
+    "verify": "npm run lint:focused && npm run test && npm run build"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-separator": "^1.1.8",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "@react-oauth/google": "^0.12.2",
+    "@tanstack/react-query": "^5.90.21",
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/js-cookie": "^3.0.6",
+    "@types/leaflet": "^1.9.21",
+    "@vercel/analytics": "^2.0.1",
+    "axios": "^1.13.2",
+    "canvas-confetti": "^1.9.4",
+    "clsx": "^2.1.1",
+    "firebase": "^12.9.0",
+    "framer-motion": "^11.11.17",
+    "hls.js": "^1.6.15",
+    "js-cookie": "^3.0.5",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.468.0",
+    "next": "16.0.10",
+    "next-themes": "^0.4.4",
+    "react": "19.2.0",
+    "react-activity-calendar": "^3.0.1",
+    "react-dom": "19.2.0",
+    "react-leaflet": "^5.0.0",
+    "recharts": "^3.5.1",
+    "socket.io-client": "^4.8.3",
+    "tailwind-merge": "^2.6.0",
+    "zod": "^4.1.13",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "babel-plugin-react-compiler": "1.0.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.0.10",
+    "tailwindcss": "^4",
+    "tsx": "^4.20.6",
+    "typescript": "^5"
+  }
+}
