@@ -1,6 +1,7 @@
 // Integrations API - GitHub and other external integrations
 
 import apiClient from './client';
+import type { GitHubContributionCalendar, LanguageStat } from '@/types/profile';
 
 // ============================================
 // Types
@@ -12,7 +13,7 @@ export interface GitHubStats {
   totalForks: number;
   followers: number;
   following: number;
-  topLanguages: Record<string, number>;
+  topLanguages: Record<string, LanguageStat | number>;
   topRepos: Array<{
     name: string;
     description: string | null;
@@ -20,6 +21,7 @@ export interface GitHubStats {
     forks: number;
     language: string | null;
     url: string;
+    updatedAt?: string;
   }>;
 }
 
@@ -27,6 +29,7 @@ export interface GitHubConnection {
   connected: boolean;
   username: string | null;
   stats: GitHubStats | null;
+  contributionCalendar?: GitHubContributionCalendar | null;
   lastSyncedAt: string | null;
 }
 

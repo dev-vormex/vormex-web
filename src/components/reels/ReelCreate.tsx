@@ -20,7 +20,9 @@ import {
   Calendar,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { reelsApi } from '@/lib/api/reels';
+import { audioApi, reelsApi, type Audio } from '@/lib/api/reels';
+import { AudioPickerDialog, SelectedAudioCard } from '@/components/audio/AudioPickerDialog';
+import { toMusicAttachment, type MusicAttachment } from '@/types/music';
 
 interface ReelCreateProps {
   onClose?: () => void;
@@ -58,6 +60,9 @@ export function ReelCreate({ onClose, initialOriginalReelId, initialResponseType
   const [originalReelId, setOriginalReelId] = useState(initialOriginalReelId || '');
   const [responseType, setResponseType] = useState<'duet' | 'stitch' | ''>(initialResponseType || '');
   const [audioId, setAudioId] = useState(initialAudioId || '');
+  const [selectedMusic, setSelectedMusic] = useState<MusicAttachment | null>(null);
+  const [showAudioPicker, setShowAudioPicker] = useState(false);
+  const [isLoadingSelectedAudio, setIsLoadingSelectedAudio] = useState(false);
 
   const [codeSnippet, setCodeSnippet] = useState('');
   const [codeLanguage, setCodeLanguage] = useState('');
@@ -80,6 +85,45 @@ export function ReelCreate({ onClose, initialOriginalReelId, initialResponseType
     }
     if (audio) setAudioId(audio);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!audioId) {
+      setIsLoadingSelectedAudio(false);
+      setSelectedMusic(null);
+      return;
+    }
+
+    if (selectedMusic?.audioId === audioId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadAudio = async () => {
+      setIsLoadingSelectedAudio(true);
+      try {
+        const audio = (await audioApi.getAudio(audioId)) as unknown as Audio;
+        if (!cancelled) {
+          setSelectedMusic(toMusicAttachment(audio));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Failed to load selected audio:', err);
+          setSelectedMusic(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingSelectedAudio(false);
+        }
+      }
+    };
+
+    void loadAudio();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [audioId, selectedMusic?.audioId]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -199,6 +243,11 @@ export function ReelCreate({ onClose, initialOriginalReelId, initialResponseType
     codeLanguage,
     codeFileName,
     repoUrl,
+    audioId,
+    saveAsDraft,
+    scheduledAt,
+    originalReelId,
+    responseType,
     router,
   ]);
 
@@ -358,6 +407,37 @@ export function ReelCreate({ onClose, initialOriginalReelId, initialResponseType
                     disabled={hashtags.length >= 10}
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-transparent focus:ring-2 focus:ring-blue-500 outline-none"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    <Music className="w-4 h-4 inline mr-1" />
+                    Song
+                  </label>
+
+                  {selectedMusic ? (
+                    <SelectedAudioCard
+                      music={selectedMusic}
+                      tone="light"
+                      onChange={() => setShowAudioPicker(true)}
+                      onRemove={() => {
+                        setAudioId('');
+                        setSelectedMusic(null);
+                      }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowAudioPicker(true)}
+                      className="w-full rounded-xl border border-dashed border-gray-300 px-4 py-4 text-left text-sm text-gray-600 transition hover:border-blue-500 hover:text-gray-900 dark:border-gray-700 dark:text-gray-300 dark:hover:text-white"
+                    >
+                      Choose a song from the audio library
+                    </button>
+                  )}
+
+                  {isLoadingSelectedAudio && (
+                    <p className="mt-2 text-xs text-gray-500">Loading selected audio...</p>
+                  )}
                 </div>
 
                 <div>
@@ -566,6 +646,19 @@ export function ReelCreate({ onClose, initialOriginalReelId, initialResponseType
           </div>
         )}
       </div>
+
+      <AudioPickerDialog
+        isOpen={showAudioPicker}
+        onClose={() => setShowAudioPicker(false)}
+        onSelect={(audio) => {
+          setAudioId(audio.id);
+          setSelectedMusic(toMusicAttachment(audio));
+          setShowAudioPicker(false);
+        }}
+        selectedAudioId={audioId || null}
+        title="Pick reel audio"
+        description="Choose the track this reel should use."
+      />
     </div>
   );
 }

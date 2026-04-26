@@ -1,4 +1,5 @@
 import apiClient from './client';
+import type { MusicAttachment } from '@/types/music';
 
 // ============================================
 // Types
@@ -30,6 +31,7 @@ export interface Story {
   textStyle?: { fontSize?: number; fontWeight?: string; color?: string } | null;
   stickers?: any[] | null;
   filters?: string | null;
+  music?: MusicAttachment | null;
   musicUrl?: string | null;
   musicTitle?: string | null;
   musicArtist?: string | null;
@@ -95,6 +97,7 @@ export interface CreateStoryInput {
   textStyle?: { fontSize?: number; fontWeight?: string; color?: string };
   stickers?: any[];
   filters?: string;
+  music?: MusicAttachment | null;
   musicUrl?: string;
   musicTitle?: string;
   musicArtist?: string;

@@ -1,3 +1,5 @@
+import type { MusicAttachment } from '@/types/music';
+
 // Post Types - Complete TypeScript definitions for Posts & Feed API
 
 export type PostKind = 'POST' | 'ARTICLE_REDIRECT';
@@ -60,6 +62,7 @@ export interface Post {
   content: string | null;
   contentType: string;
   mentions?: string[];
+  music?: MusicAttachment | null;
   
   // IMAGE specific
   mediaUrls: string[];

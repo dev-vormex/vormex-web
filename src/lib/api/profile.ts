@@ -356,6 +356,7 @@ export async function getGitHubStats(): Promise<{
   connected: boolean;
   username: string | null;
   stats: any;
+  contributionCalendar?: any;
   lastSyncedAt: string | null;
 }> {
   return apiClient.get('/integrations/github/stats');
@@ -400,4 +401,3 @@ export const profileAPI = {
   disconnectGitHub,
   getGitHubStats,
 };
-

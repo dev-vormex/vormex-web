@@ -59,6 +59,7 @@ export interface GitHubProfile {
   avatarUrl: string | null;
   profileUrl: string | null;
   stats: GitHubStats | null;
+  contributionCalendar: GitHubContributionCalendar | null;
   lastSyncedAt: string | null;
 }
 
@@ -84,6 +85,42 @@ export interface TopRepo {
   forks: number;
   language: string | null;
   description: string | null;
+  updatedAt?: string;
+}
+
+export type GitHubContributionLevel =
+  | 'NONE'
+  | 'FIRST_QUARTILE'
+  | 'SECOND_QUARTILE'
+  | 'THIRD_QUARTILE'
+  | 'FOURTH_QUARTILE';
+
+export interface GitHubContributionDay {
+  color: string;
+  contributionCount: number;
+  contributionLevel: GitHubContributionLevel;
+  date: string;
+  weekday: number;
+}
+
+export interface GitHubContributionWeek {
+  firstDay: string;
+  contributionDays: GitHubContributionDay[];
+}
+
+export interface GitHubContributionMonth {
+  firstDay: string;
+  name: string;
+  totalWeeks: number;
+  year: number;
+}
+
+export interface GitHubContributionCalendar {
+  colors: string[];
+  contributionYears: number[];
+  months: GitHubContributionMonth[];
+  totalContributions: number;
+  weeks: GitHubContributionWeek[];
 }
 
 export interface ActivityHeatmapDay {
@@ -318,4 +355,3 @@ export interface AchievementInput {
   certificateUrl?: string;
   color?: string;
 }
-

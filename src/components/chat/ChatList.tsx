@@ -229,7 +229,11 @@ export default function ChatList({
       }
     };
 
-    const handleMessagesRead = (data: { conversationId: string }) => {
+    const handleMessagesRead = (data: { conversationId: string; readBy?: string }) => {
+      if (data.readBy && data.readBy !== currentUserId) {
+        return;
+      }
+
       setConversationState((previousConversations) =>
         previousConversations.map(c =>
           c.id === data.conversationId 

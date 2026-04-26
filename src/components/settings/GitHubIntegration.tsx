@@ -236,9 +236,13 @@ export function GitHubIntegration() {
                   </h4>
                   <div className="flex flex-wrap gap-2">
                     {Object.entries(connection.stats.topLanguages)
-                      .sort(([, a], [, b]) => (b as number) - (a as number))
+                      .sort(([, a], [, b]) => {
+                        const aValue = typeof a === 'number' ? a : a.percentage;
+                        const bValue = typeof b === 'number' ? b : b.percentage;
+                        return bValue - aValue;
+                      })
                       .slice(0, 5)
-                      .map(([lang, bytes]) => (
+                      .map(([lang]) => (
                         <span
                           key={lang}
                           className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full text-sm"

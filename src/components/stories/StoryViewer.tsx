@@ -523,19 +523,21 @@ export function StoryViewer({
 
             {/* Link Preview */}
             {currentStory.linkUrl && (
-              <div className="absolute bottom-32 left-4 right-4 z-10">
-                <a
-                  href={currentStory.linkUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex items-center gap-2 bg-white/10 backdrop-blur-md rounded-full px-4 py-2"
-                >
-                  <Link2 className="w-4 h-4 text-white" />
-                  <span className="text-white text-sm truncate">
-                    {currentStory.linkTitle || currentStory.linkUrl}
-                  </span>
-                </a>
+              <div className="absolute bottom-32 left-4 right-4 z-10 space-y-2">
+                {currentStory.linkUrl && (
+                  <a
+                    href={currentStory.linkUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 backdrop-blur-md"
+                  >
+                    <Link2 className="w-4 h-4 text-white" />
+                    <span className="truncate text-sm text-white">
+                      {currentStory.linkTitle || currentStory.linkUrl}
+                    </span>
+                  </a>
+                )}
               </div>
             )}
 

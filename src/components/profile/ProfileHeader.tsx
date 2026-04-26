@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -26,10 +26,16 @@ import {
   X,
   Users,
   Loader2,
+  MessageCircle,
+  Flag,
+  Shield,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { getConnectionStatus, sendConnectionRequest, cancelConnectionRequest, removeConnection, acceptConnectionRequest } from '@/lib/api/connections';
 import { followUser, unfollowUser, getFollowStatus, getMutualInfo, type MutualInfo } from '@/lib/api/follow';
+import { getOrCreateConversation } from '@/lib/api/chat';
+import { ReportModal } from '@/components/ui/ReportModal';
+import { BlockUserModal } from '@/components/ui/BlockUserModal';
 import ConnectionSentToast from '@/components/engagement/ConnectionSentToast';
 import type { ProfileUser, ProfileStats } from '@/types/profile';
 
@@ -53,6 +59,7 @@ export function ProfileHeader({
   const router = useRouter();
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [copied, setCopied] = useState(false);
+  const actionMenuRef = useRef<HTMLDivElement>(null);
 
   // Connection & Follow state
   const [connectionStatus, setConnectionStatus] = useState<'none' | 'pending_sent' | 'pending_received' | 'connected' | 'blocked'>('none');
@@ -62,17 +69,30 @@ export function ProfileHeader({
   const [mutualInfo, setMutualInfo] = useState<MutualInfo | null>(null);
   const [loadingConnection, setLoadingConnection] = useState(false);
   const [loadingFollow, setLoadingFollow] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState(false);
   const [showConnectMenu, setShowConnectMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [showBlockModal, setShowBlockModal] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  const [messageError, setMessageError] = useState<string | null>(null);
 
-  // Fetch connection and follow status on mount
   useEffect(() => {
-    if (!isOwner) {
-      fetchRelationshipStatus();
-    }
-  }, [user.id, isOwner]);
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (actionMenuRef.current?.contains(event.target as Node)) {
+        return;
+      }
 
-  const fetchRelationshipStatus = async () => {
+      setShowShareMenu(false);
+      setShowConnectMenu(false);
+      setShowMoreMenu(false);
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  const fetchRelationshipStatus = useCallback(async () => {
     try {
       // Use allSettled so one failing API (e.g. DB unreachable) doesn't break the whole profile
       const [connResult, followResult, mutualResult] = await Promise.allSettled([
@@ -103,7 +123,14 @@ export function ProfileHeader({
     } catch (error) {
       console.error('Failed to fetch relationship status:', error);
     }
-  };
+  }, [user.id]);
+
+  // Fetch connection and follow status on mount
+  useEffect(() => {
+    if (!isOwner) {
+      fetchRelationshipStatus();
+    }
+  }, [fetchRelationshipStatus, isOwner]);
 
   // Handle connection request
   const handleConnect = async () => {
@@ -184,6 +211,32 @@ export function ProfileHeader({
     }
   };
 
+  const handleMessage = async () => {
+    try {
+      setLoadingMessage(true);
+      setMessageError(null);
+      setShowConnectMenu(false);
+      setShowMoreMenu(false);
+
+      const conversation = await getOrCreateConversation(user.id);
+      router.push(`/messages/${conversation.id}`);
+    } catch (error) {
+      console.error('Failed to open conversation:', error);
+      const apiError = error as {
+        message?: string;
+        response?: { data?: { message?: string; error?: string } };
+      };
+      setMessageError(
+        apiError.response?.data?.message ||
+        apiError.response?.data?.error ||
+        apiError.message ||
+        'Unable to open messages right now.'
+      );
+    } finally {
+      setLoadingMessage(false);
+    }
+  };
+
   // Format numbers for display
   const formatNumber = (num: number): string => {
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
@@ -199,6 +252,7 @@ export function ProfileHeader({
     setTimeout(() => {
       setCopied(false);
       setShowShareMenu(false);
+      setShowMoreMenu(false);
     }, 2000);
   };
 
@@ -319,7 +373,10 @@ export function ProfileHeader({
               {/* ───────────────────────────────────────────────────────────────────
                   ACTION BUTTONS - High contrast, LinkedIn-style
               ─────────────────────────────────────────────────────────────────── */}
-              <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 sm:gap-3 sm:pb-2">
+              <div
+                ref={actionMenuRef}
+                className="flex flex-wrap items-center justify-center sm:justify-end gap-2 sm:gap-3 sm:pb-2"
+              >
                 {isOwner ? (
                   <>
                     <Button
@@ -462,30 +519,119 @@ export function ProfileHeader({
                       )}
                     </div>
 
-                    {/* ═══════════════════════════════════════════════════════════════
-                        FOLLOW BUTTON - Twitter-style instant toggle
-                    ═══════════════════════════════════════════════════════════════ */}
-                    <Button
-                      onClick={handleFollowToggle}
-                      disabled={loadingFollow}
-                      className={`flex items-center gap-2 px-6 py-2.5 rounded-full font-semibold transition-all text-sm ${isFollowing
-                          ? 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300 border border-gray-300 dark:border-neutral-600 hover:bg-red-50 hover:border-red-300 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:border-red-700 dark:hover:text-red-400'
-                          : 'bg-transparent border-2 border-gray-300 dark:border-neutral-600 text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 hover:border-gray-400 dark:hover:border-neutral-500'
-                        }`}
-                    >
-                      {loadingFollow ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : isFollowing ? (
-                        <UserCheck className="w-4 h-4" />
-                      ) : (
-                        <UserPlus className="w-4 h-4" />
-                      )}
-                      {isFollowing ? 'Following' : 'Follow'}
-                    </Button>
+                    {connectionStatus === 'blocked' ? (
+                      <Button
+                        disabled
+                        className="flex items-center gap-2 px-6 py-2.5 bg-gray-100 dark:bg-neutral-800 text-gray-500 dark:text-neutral-400 border border-gray-300 dark:border-neutral-700 rounded-full font-semibold text-sm"
+                      >
+                        <Shield className="w-4 h-4" />
+                        Blocked
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          onClick={handleMessage}
+                          disabled={loadingMessage}
+                          className="flex items-center gap-2 px-6 py-2.5 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-neutral-200 text-white dark:text-neutral-950 rounded-full font-semibold transition-all text-sm"
+                        >
+                          {loadingMessage ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <MessageCircle className="w-4 h-4" />
+                          )}
+                          Message
+                        </Button>
 
-                    <button className="p-2.5 rounded-full border-2 border-gray-300 dark:border-neutral-600 text-gray-600 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-all">
-                      <MoreHorizontal className="w-5 h-5" />
-                    </button>
+                        <Button
+                          onClick={handleFollowToggle}
+                          disabled={loadingFollow}
+                          className={`flex items-center gap-2 px-6 py-2.5 rounded-full font-semibold transition-all text-sm ${isFollowing
+                              ? 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300 border border-gray-300 dark:border-neutral-600 hover:bg-red-50 hover:border-red-300 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:border-red-700 dark:hover:text-red-400'
+                              : 'bg-transparent border-2 border-gray-300 dark:border-neutral-600 text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 hover:border-gray-400 dark:hover:border-neutral-500'
+                            }`}
+                        >
+                          {loadingFollow ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : isFollowing ? (
+                            <UserCheck className="w-4 h-4" />
+                          ) : (
+                            <UserPlus className="w-4 h-4" />
+                          )}
+                          {isFollowing ? 'Following' : 'Follow'}
+                        </Button>
+                      </>
+                    )}
+
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowMoreMenu((open) => !open)}
+                        aria-label="Open profile actions"
+                        aria-haspopup="menu"
+                        aria-expanded={showMoreMenu}
+                        className="p-2.5 rounded-full border-2 border-gray-300 dark:border-neutral-600 text-gray-600 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-all"
+                      >
+                        <MoreHorizontal className="w-5 h-5" />
+                      </button>
+
+                      <AnimatePresence>
+                        {showMoreMenu && (
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                            role="menu"
+                            className="absolute right-0 mt-2 w-56 py-2 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-gray-200 dark:border-neutral-700 z-50"
+                          >
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={handleCopyLink}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-700"
+                            >
+                              {copied ? (
+                                <Check className="w-4 h-4 text-green-500" />
+                              ) : (
+                                <Copy className="w-4 h-4" />
+                              )}
+                              {copied ? 'Link copied!' : 'Copy profile link'}
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setShowMoreMenu(false);
+                                setShowReportModal(true);
+                              }}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-700"
+                            >
+                              <Flag className="w-4 h-4" />
+                              Report profile
+                            </button>
+                            {connectionStatus !== 'blocked' && (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setShowMoreMenu(false);
+                                  setShowBlockModal(true);
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-neutral-700"
+                              >
+                                <Shield className="w-4 h-4" />
+                                Block user
+                              </button>
+                            )}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+
+                    {messageError && (
+                      <p className="basis-full text-center sm:text-right text-xs text-red-600 dark:text-red-400">
+                        {messageError}
+                      </p>
+                    )}
                   </>
                 )}
               </div>
@@ -767,6 +913,28 @@ export function ProfileHeader({
         recipientName={user.name}
         onClose={() => setShowToast(false)}
       />
+      {!isOwner && (
+        <>
+          <ReportModal
+            isOpen={showReportModal}
+            onClose={() => setShowReportModal(false)}
+            type="user"
+            targetId={user.id}
+            targetName={user.name}
+          />
+          <BlockUserModal
+            isOpen={showBlockModal}
+            onClose={() => setShowBlockModal(false)}
+            userId={user.id}
+            userName={user.name}
+            userImage={user.avatar}
+            onBlocked={() => {
+              setConnectionStatus('blocked');
+              setIsFollowing(false);
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }

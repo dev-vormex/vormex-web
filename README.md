@@ -8,6 +8,11 @@ Create your env file first:
 cp .env.example .env.local
 ```
 
+By default, local development connects to `vormex-backend` on `http://localhost:5000`:
+
+- `NEXT_PUBLIC_API_URL=http://localhost:5000/api`
+- `NEXT_PUBLIC_SOCKET_URL=http://localhost:5000`
+
 First, run the development server:
 
 ```bash

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { authAPI } from '@/lib/api/auth';
 import { forgotPasswordSchema } from '@/lib/validations/auth';
 import { handleApiError } from '@/lib/utils/errorHandler';
@@ -9,12 +9,19 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import Link from 'next/link';
 import '../login/login.css';
 
-export default function ForgotPasswordPage() {
-  const router = useRouter();
+function ForgotPasswordContent() {
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    const prefilledEmail = searchParams.get('email')?.trim() ?? '';
+    if (prefilledEmail) {
+      setEmail(prefilledEmail);
+    }
+  }, [searchParams]);
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,5 +78,22 @@ export default function ForgotPasswordPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="auth-page-wrapper">
+        <div className="main" style={{ maxWidth: '500px', width: '100%', minWidth: 'auto' }}>
+          <div className="form">
+            <h2 className="form_title title">Forgot Password</h2>
+            <p className="description">Loading...</p>
+          </div>
+        </div>
+      </div>
+    }>
+      <ForgotPasswordContent />
+    </Suspense>
   );
 }

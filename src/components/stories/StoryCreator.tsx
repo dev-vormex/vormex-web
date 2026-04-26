@@ -20,7 +20,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import Image from 'next/image';
-import { createStory, createStoryWithMedia, type CreateStoryInput, type StoryCategory, type StoryVisibility } from '@/lib/api/stories';
+import { createStory, createStoryWithMedia, type StoryCategory, type StoryVisibility } from '@/lib/api/stories';
 
 interface StoryCreatorProps {
   isOpen: boolean;

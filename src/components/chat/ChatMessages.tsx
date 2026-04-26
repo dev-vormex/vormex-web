@@ -155,12 +155,11 @@ export default function ChatMessages({
   }, []);
 
   const syncReadState = useCallback(async () => {
-    markChatAsRead(conversationId);
-
     try {
       await markConversationAsRead(conversationId);
     } catch (error) {
       console.error('Failed to mark conversation as read:', error);
+      markChatAsRead(conversationId);
     }
   }, [conversationId]);
 
@@ -268,7 +267,7 @@ export default function ChatMessages({
     };
 
     const handleMessagesRead = (data: { conversationId: string; readBy: string; readAt: Date }) => {
-      if (data.conversationId === conversationId) {
+      if (data.conversationId === conversationId && data.readBy !== currentUserId) {
         setMessages(prev => 
           prev.map(m => 
             m.senderId === currentUserId && m.status !== 'READ'
