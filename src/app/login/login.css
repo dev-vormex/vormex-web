@@ -153,6 +153,13 @@
     white-space: nowrap;
 }
 
+.google-login-wrapper {
+    display: flex;
+    justify-content: center;
+    min-height: 44px;
+    margin: 10px 0;
+}
+
 .form__input {
     width: 350px;
     height: 40px;

@@ -52,7 +52,7 @@ function GoogleCallbackContent() {
         return;
       }
 
-        // Exchange authorization code for tokens using PKCE via our API route
+        // Exchange the authorization code through the backend so Google secrets stay server-side.
         const redirectUri = `${window.location.origin}/auth/google/callback`;
         const codeVerifier = sessionStorage.getItem('oauth_code_verifier');
         
@@ -60,35 +60,11 @@ function GoogleCallbackContent() {
           throw new Error('Code verifier not found. Please try signing in again.');
         }
 
-        // Use our API route to exchange code for tokens (server-side, secure)
-        const tokenResponse = await fetch('/api/auth/google/callback', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            code: code,
-            codeVerifier: codeVerifier,
-            redirectUri: redirectUri,
-          }),
+        const authResponse = await authAPI.googleCodeSignIn({
+          code,
+          codeVerifier,
+          redirectUri,
         });
-
-        if (!tokenResponse.ok) {
-          const errorData = await tokenResponse.json().catch(() => ({}));
-          throw new Error(errorData.error || errorData.error_description || 'Failed to exchange authorization code');
-        }
-
-        const tokenData = await tokenResponse.json();
-
-        // Extract id_token from the response
-        const idToken = tokenData.idToken;
-
-        if (!idToken) {
-          throw new Error('ID token not found in token response');
-        }
-
-        // Send id_token to backend
-        const authResponse = await authAPI.googleSignIn(idToken);
 
         setAuth(authResponse);
         setPendingUser(authResponse.user);

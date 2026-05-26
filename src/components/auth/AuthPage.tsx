@@ -3,10 +3,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth/useAuth';
+import { authAPI } from '@/lib/api/auth';
 import { applyReferralCode } from '@/lib/api/referrals';
+import { setPendingUser } from '@/lib/auth/authHelpers';
 import { registerSchema, loginSchema } from '@/lib/validations/auth';
 import { handleApiError } from '@/lib/utils/errorHandler';
-import { GOOGLE_CLIENT_ID } from '@/lib/utils/constants';
 import { LoginSection } from './LoginSection';
 import { SignupSection } from './SignupSection';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
@@ -15,7 +16,7 @@ import '@/app/login/login.css';
 export function AuthPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { login: loginUser, register: registerUser } = useAuth();
+  const { login: loginUser, register: registerUser, setAuth } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,75 +48,36 @@ export function AuthPage() {
     }
   }, []);
 
-  // Generate PKCE code verifier
-  const generateCodeVerifier = (): string => {
-    const array = new Uint8Array(32);
-    crypto.getRandomValues(array);
-    return btoa(String.fromCharCode(...array))
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=/g, '');
-  };
-
-  // Generate PKCE code challenge from verifier
-  const generateCodeChallenge = async (verifier: string): Promise<string> => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(verifier);
-    const digest = await crypto.subtle.digest('SHA-256', data);
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(digest)));
-    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-  };
-
-  // Google OAuth2.0 redirect login with PKCE
-  const handleGoogleLogin = async () => {
-    if (!GOOGLE_CLIENT_ID) {
-      setError('Google Client ID is not configured. Please check your environment variables.');
-      return;
-    }
-
+  const handleGoogleLogin = async (idToken: string) => {
     setIsLoading(true);
     setError(null);
+    setSuccess(null);
 
     try {
-      // Generate state for CSRF protection
-      const state = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-      sessionStorage.setItem('oauth_state', state);
+      const authResponse = await authAPI.googleSignIn(idToken);
+      setAuth(authResponse);
+      setPendingUser(authResponse.user);
+
       if (referralCode) {
-        sessionStorage.setItem('oauth_referral_code', referralCode);
-      } else {
-        sessionStorage.removeItem('oauth_referral_code');
+        try {
+          await applyReferralCode(referralCode);
+        } catch (referralError) {
+          console.error('Failed to apply referral code after Google sign-in:', referralError);
+        }
       }
 
-      // Generate PKCE code verifier and challenge
-      const codeVerifier = generateCodeVerifier();
-      const codeChallenge = await generateCodeChallenge(codeVerifier);
-      sessionStorage.setItem('oauth_code_verifier', codeVerifier);
-
-      // Build Google OAuth URL with PKCE
-      const redirectUri = `${window.location.origin}/auth/google/callback`;
-      const scope = 'openid email profile';
-      const responseType = 'code';
-      
-      const params = new URLSearchParams({
-        client_id: GOOGLE_CLIENT_ID,
-        redirect_uri: redirectUri,
-        response_type: responseType,
-        scope: scope,
-        state: state,
-        code_challenge: codeChallenge,
-        code_challenge_method: 'S256',
-        access_type: 'offline',
-        prompt: 'consent',
-      });
-
-      // Redirect to Google OAuth consent page
-      window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-    } catch {
-      setError('Failed to initiate Google sign-in. Please try again.');
+      router.replace('/');
+    } catch (err) {
+      setError(handleApiError(err));
       setIsLoading(false);
     }
   };
 
+  const handleGoogleError = (message: string) => {
+    setError(message);
+    setSuccess(null);
+    setIsLoading(false);
+  };
 
   // Handle form switch animation
   const handleSwitch = useCallback(() => {
@@ -314,6 +276,7 @@ export function AuthPage() {
           onPasswordChange={setPassword}
           onSubmit={handleSubmit}
           onGoogleLogin={handleGoogleLogin}
+          onGoogleError={handleGoogleError}
           isLoading={isLoading}
           error={error}
           success={success}
@@ -327,6 +290,7 @@ export function AuthPage() {
           onPasswordChange={setPassword}
           onSubmit={handleSubmit}
           onGoogleLogin={handleGoogleLogin}
+          onGoogleError={handleGoogleError}
           isLoading={isLoading}
           error={error}
           success={success}

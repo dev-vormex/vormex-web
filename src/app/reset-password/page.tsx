@@ -92,7 +92,8 @@ function ResetPasswordContent() {
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             required
-            minLength={8}
+            minLength={12}
+            maxLength={128}
           />
           <input
             className="form__input"
@@ -101,7 +102,8 @@ function ResetPasswordContent() {
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             required
-            minLength={8}
+            minLength={12}
+            maxLength={128}
           />
           {error && <div className="error-message">{error}</div>}
           {success && <div className="success-message">{success}</div>}
@@ -133,4 +135,3 @@ export default function ResetPasswordPage() {
     </Suspense>
   );
 }
-

@@ -407,6 +407,8 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
           const Cookies = (await import('js-cookie')).default;
           removeToken();
           Cookies.remove('authToken');
+          Cookies.remove('vx_auth_present');
+          Cookies.remove('vx_csrf');
           window.location.href = '/login';
           return;
         }

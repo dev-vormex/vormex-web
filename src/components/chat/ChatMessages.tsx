@@ -1,7 +1,13 @@
 'use client';
 
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
-import { Message, getMessages, markAsRead as markConversationAsRead } from '@/lib/api/chat';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  Message,
+  MessagesResponse,
+  getMessages,
+  markAsRead as markConversationAsRead,
+} from '@/lib/api/chat';
 import { 
   initializeSocket,
   joinChatRoom, 
@@ -17,6 +23,7 @@ import MessageMenu, { MessageQuickActions } from './MessageMenu';
 import { WALLPAPER_OPTIONS } from './ChatSettingsPanel';
 import type { UploadingMessage, OptimisticMessage } from './ChatInput';
 import { DEFAULT_CHAT_REACTIONS } from '@/lib/chat/customization';
+import { queryKeys } from '@/lib/queryKeys';
 
 const HISTORY_LOAD_THRESHOLD = 96;
 const AUTO_SCROLL_THRESHOLD = 120;
@@ -45,10 +52,21 @@ function mergeMessages(existingMessages: Message[], incomingMessages: Message[])
   }
 
   const messageMap = new Map(existingMessages.map((message) => [message.id, message]));
+  const clientMessageIdMap = new Map(
+    existingMessages
+      .map((message) => [message.clientMessageId, message.id] as const)
+      .filter(([clientMessageId]) => Boolean(clientMessageId))
+  );
 
   incomingMessages.forEach((incomingMessage) => {
     const normalizedMessage = normalizeMessage(incomingMessage);
-    const existingMessage = messageMap.get(normalizedMessage.id);
+    const existingIdForClientMessage = normalizedMessage.clientMessageId
+      ? clientMessageIdMap.get(normalizedMessage.clientMessageId)
+      : undefined;
+    const existingMessage = messageMap.get(existingIdForClientMessage || normalizedMessage.id);
+    if (existingIdForClientMessage && existingIdForClientMessage !== normalizedMessage.id) {
+      messageMap.delete(existingIdForClientMessage);
+    }
 
     messageMap.set(
       normalizedMessage.id,
@@ -62,6 +80,9 @@ function mergeMessages(existingMessages: Message[], incomingMessages: Message[])
           }
         : normalizedMessage
     );
+    if (normalizedMessage.clientMessageId) {
+      clientMessageIdMap.set(normalizedMessage.clientMessageId, normalizedMessage.id);
+    }
   });
 
   return Array.from(messageMap.values()).sort(
@@ -113,11 +134,19 @@ export default function ChatMessages({
   confirmedMessages = [],
   onLastMessageUpdate,
 }: ChatMessagesProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const cachedMessagesResponse = queryClient.getQueryData<MessagesResponse>(
+    queryKeys.chatMessages(conversationId)
+  );
+  const [messages, setMessages] = useState<Message[]>(
+    () => cachedMessagesResponse?.messages.map(normalizeMessage) ?? []
+  );
+  const [loading, setLoading] = useState(() => !cachedMessagesResponse);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
-  const [nextCursor, setNextCursor] = useState<string | undefined>();
+  const [hasMore, setHasMore] = useState(() => cachedMessagesResponse?.hasMore ?? false);
+  const [nextCursor, setNextCursor] = useState<string | undefined>(
+    () => cachedMessagesResponse?.nextCursor
+  );
   const [typingUser, setTypingUser] = useState<string | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
@@ -131,6 +160,25 @@ export default function ChatMessages({
   const scrollRestoreRef = useRef<{ previousHeight: number; previousTop: number } | null>(null);
   const optimisticCountRef = useRef(optimisticMessages.length);
   const uploadingCountRef = useRef(uploadingMessages.length);
+  const hasHydratedMessageCacheRef = useRef(Boolean(cachedMessagesResponse));
+  const messageCountRef = useRef(messages.length);
+  const processedIncomingMessageIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    messageCountRef.current = messages.length;
+  }, [messages.length]);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    queryClient.setQueryData<MessagesResponse>(queryKeys.chatMessages(conversationId), {
+      messages,
+      hasMore,
+      nextCursor,
+    });
+  }, [conversationId, hasMore, loading, messages, nextCursor, queryClient]);
 
   // Scroll to a specific message and highlight it
   const scrollToMessage = useCallback((messageId: string) => {
@@ -158,7 +206,14 @@ export default function ChatMessages({
     try {
       await markConversationAsRead(conversationId);
     } catch (error) {
-      console.error('Failed to mark conversation as read:', error);
+      const status = typeof error === 'object' && error !== null && 'response' in error
+        ? (error as { response?: { status?: number } }).response?.status
+        : undefined;
+      console.warn(
+        status
+          ? `Read receipt REST sync failed with ${status}; falling back to socket sync.`
+          : 'Read receipt REST sync failed; falling back to socket sync.'
+      );
       markChatAsRead(conversationId);
     }
   }, [conversationId]);
@@ -181,7 +236,7 @@ export default function ChatMessages({
             previousTop: container.scrollTop,
           };
         }
-      } else {
+      } else if (!hasHydratedMessageCacheRef.current || messageCountRef.current === 0) {
         setLoading(true);
       }
 
@@ -192,7 +247,8 @@ export default function ChatMessages({
       if (cursor) {
         setMessages((previousMessages) => mergeMessages(previousMessages, normalizedMessages));
       } else {
-        setMessages(normalizedMessages);
+        setMessages((previousMessages) => mergeMessages(previousMessages, normalizedMessages));
+        hasHydratedMessageCacheRef.current = true;
         autoScrollEnabledRef.current = true;
         setAutoScrollMode('instant');
 
@@ -247,6 +303,17 @@ export default function ChatMessages({
 
     const handleNewMessage = (data: { conversationId: string; message: Message }) => {
       if (data.conversationId === conversationId) {
+        if (data.message.id) {
+          if (processedIncomingMessageIdsRef.current.has(data.message.id)) {
+            return;
+          }
+          processedIncomingMessageIdsRef.current.add(data.message.id);
+          if (processedIncomingMessageIdsRef.current.size > 100) {
+            const first = processedIncomingMessageIdsRef.current.values().next().value;
+            if (first) processedIncomingMessageIdsRef.current.delete(first);
+          }
+        }
+
         appendMessage(data.message);
 
         // Mark as read if from other user
@@ -355,6 +422,17 @@ export default function ChatMessages({
     // Handle chat:notification (sent to user's personal room as fallback)
     const handleChatNotification = (data: { type: string; conversationId: string; message: Message }) => {
       if (data.type === 'new_message' && data.conversationId === conversationId) {
+        if (data.message.id) {
+          if (processedIncomingMessageIdsRef.current.has(data.message.id)) {
+            return;
+          }
+          processedIncomingMessageIdsRef.current.add(data.message.id);
+          if (processedIncomingMessageIdsRef.current.size > 100) {
+            const first = processedIncomingMessageIdsRef.current.values().next().value;
+            if (first) processedIncomingMessageIdsRef.current.delete(first);
+          }
+        }
+
         appendMessage(data.message);
 
         // Mark as read if from other user
@@ -466,6 +544,14 @@ export default function ChatMessages({
     
     return groups;
   }, {} as Record<string, Message[]>);
+  const confirmedClientMessageIds = new Set(
+    messages
+      .map((message) => message.clientMessageId)
+      .filter((clientMessageId): clientMessageId is string => Boolean(clientMessageId))
+  );
+  const visibleOptimisticMessages = optimisticMessages.filter(
+    (optimisticMessage) => !confirmedClientMessageIds.has(optimisticMessage.id)
+  );
 
   if (loading) {
     return (
@@ -534,7 +620,7 @@ export default function ChatMessages({
       ))}
 
       {/* Optimistic Messages (sent but not yet confirmed) */}
-      {optimisticMessages.map(optMsg => (
+      {visibleOptimisticMessages.map(optMsg => (
         <div key={optMsg.id} className="flex justify-end mb-2">
           <div className="max-w-[70%]">
             {/* Reply preview if present */}

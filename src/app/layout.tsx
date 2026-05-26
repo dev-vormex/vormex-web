@@ -3,10 +3,12 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/lib/auth/authContext";
 import { ThemeProvider } from "@/components/ui/ThemeProvider";
 import { AppWarmup } from "@/components/providers/AppWarmup";
+import { GoogleAuthProvider } from "@/components/providers/GoogleAuthProvider";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { NotificationToastProvider } from "@/components/notifications/NotificationToast";
 import { VormexDock } from "@/components/ui/dock";
 import { AgentProvider } from "@/components/agent/AgentContext";
+import { AgentSurface } from "@/components/agent/AgentSurface";
 import EngagementProvider from "@/components/engagement/EngagementProvider";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
@@ -110,18 +112,21 @@ export default function RootLayout({
           disableTransitionOnChange={false}
         >
           <QueryProvider>
-            <AuthProvider>
-              <AppWarmup />
-              <NotificationToastProvider>
-                <AgentProvider>
-                  <EngagementProvider>
-                    {children}
-                  </EngagementProvider>
-                  <VormexDock />
-                </AgentProvider>
-              </NotificationToastProvider>
-            </AuthProvider>
-            </QueryProvider>
+            <GoogleAuthProvider>
+              <AuthProvider>
+                <AppWarmup />
+                <NotificationToastProvider>
+                  <AgentProvider>
+                    <EngagementProvider>
+                      {children}
+                    </EngagementProvider>
+                    <AgentSurface />
+                    <VormexDock />
+                  </AgentProvider>
+                </NotificationToastProvider>
+              </AuthProvider>
+            </GoogleAuthProvider>
+          </QueryProvider>
         </ThemeProvider>
         <Analytics />
       </body>

@@ -20,7 +20,13 @@ export interface User {
 
 export interface AuthResponse {
   user: User;
-  token: string;
+  csrfToken?: string;
+  message?: string;
+  requiresVerification?: boolean;
+  session?: {
+    id: string;
+    expiresAt: string;
+  };
 }
 
 export interface LoginCredentials {

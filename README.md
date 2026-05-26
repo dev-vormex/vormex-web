@@ -33,7 +33,8 @@ Required variables:
 - `NEXT_PUBLIC_BACKEND_URL` (optional fallback): backend origin without `/api`
 - `NEXT_PUBLIC_BASE_URL`: frontend origin for OAuth callback fallback
 - `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
+
+Do not put `GOOGLE_CLIENT_SECRET` in this web app. Google code exchange is handled by `vormex-backend`.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

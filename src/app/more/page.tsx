@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { motion } from 'framer-motion';
 import {
   Settings,
@@ -45,6 +46,7 @@ import {
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { GitHubIntegration, MentionsDashboard } from '@/components/settings';
 import { useAuth } from '@/lib/auth/useAuth';
+import { useAgent } from '@/components/agent/AgentContext';
 import { getPendingRequests } from '@/lib/api/connections';
 import { useLiveWalletXpBalance } from '@/hooks/useLiveGamification';
 import { getFeedTheme, setFeedTheme } from '@/lib/utils/feedTheme';
@@ -63,9 +65,22 @@ type MenuItem = {
   subtext?: string;
 };
 
+function VormexAiIcon({ className }: { className?: string }) {
+  return (
+    <Image
+      src="/logo.png"
+      alt=""
+      width={20}
+      height={20}
+      className={`${className || 'h-5 w-5'} rounded-full object-contain`}
+    />
+  );
+}
+
 export default function MorePage() {
   const router = useRouter();
   const { user, logout } = useAuth();
+  const { openAgent } = useAgent();
   const [activeSection, setActiveSection] = useState<Section>('main');
   const [isDark, setIsDark] = useState(
     typeof window !== 'undefined' && document.documentElement.classList.contains('dark')
@@ -90,6 +105,8 @@ export default function MorePage() {
   const handleLogout = () => {
     if (confirm('Are you sure you want to log out?')) {
       Cookies.remove('authToken');
+      Cookies.remove('vx_auth_present');
+      Cookies.remove('vx_csrf');
       localStorage.removeItem('authToken');
       logout();
       router.push('/login');
@@ -115,6 +132,14 @@ export default function MorePage() {
       icon: User,
       href: '/profile',
       color: 'text-blue-500',
+    },
+    {
+      id: 'vormex-ai',
+      label: 'Vormex AI',
+      icon: VormexAiIcon,
+      onClick: openAgent,
+      color: 'text-blue-500',
+      subtext: 'Ask the app-aware assistant',
     },
     {
       id: 'saved',

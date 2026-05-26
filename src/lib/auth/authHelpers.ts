@@ -2,13 +2,12 @@ const TOKEN_KEY = 'authToken';
 const PENDING_USER_KEY = 'auth_user_pending';
 
 export function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(TOKEN_KEY);
+  return null;
 }
 
-export function setToken(token: string): void {
+export function setToken(_token?: string): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.removeItem(TOKEN_KEY);
 }
 
 export function removeToken(): void {
@@ -35,4 +34,3 @@ export function getPendingUser(): object | null {
     return null;
   }
 }
-

@@ -5,8 +5,10 @@ import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth/useAuth';
 import { getConversations } from '@/lib/api/chat';
+import { matchingAPI } from '@/lib/api/matching';
 import { getPeople, getPeopleFromSameCollege, getSuggestions, getFilterOptions } from '@/lib/api/people';
 import { getProfile, getActivityYears } from '@/lib/api/profile';
+import { initializeSocket } from '@/lib/socket';
 import {
   ACTIVITY_STALE_TIME,
   CHAT_STALE_TIME,
@@ -34,6 +36,8 @@ export function AppWarmup() {
     if (warmedUserIdRef.current === user.id) return;
 
     warmedUserIdRef.current = user.id;
+    initializeSocket();
+
     const profileTargets = [user.id, user.username].filter(
       (value, index, values) => !!value && values.indexOf(value) === index
     );
@@ -105,6 +109,14 @@ export function AppWarmup() {
         queryClient.prefetchQuery({
           queryKey: queryKeys.peopleFilterOptions(),
           queryFn: getFilterOptions,
+          staleTime: FIND_PEOPLE_STALE_TIME,
+        })
+      );
+
+      await safeWarm(() =>
+        queryClient.prefetchQuery({
+          queryKey: queryKeys.smartMatches('all'),
+          queryFn: () => matchingAPI.getSmartMatches({ type: 'all', limit: 20 }),
           staleTime: FIND_PEOPLE_STALE_TIME,
         })
       );

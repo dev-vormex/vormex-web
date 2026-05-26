@@ -3,7 +3,13 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { getConversations, Conversation, ConversationsResponse } from '@/lib/api/chat';
+import {
+  getConversations,
+  type ChatUser,
+  type Conversation,
+  type ConversationsResponse,
+  type Message,
+} from '@/lib/api/chat';
 import { initializeSocket } from '@/lib/socket';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -15,7 +21,67 @@ interface ChatListProps {
   currentUserId?: string;
 }
 
-type ConversationPreviewMessage = NonNullable<Conversation['lastMessage']>;
+type ConversationPreviewMessage = Pick<
+  Message,
+  'id' | 'conversationId' | 'senderId' | 'receiverId' | 'content' | 'contentType' | 'status' | 'createdAt' | 'updatedAt' | 'sender'
+>;
+
+function fallbackChatUser(userId: string): ChatUser {
+  return {
+    id: userId,
+    username: '',
+    name: '',
+    profileImage: null,
+    isOnline: false,
+    lastActiveAt: null,
+  };
+}
+
+function buildInstantConversationFromMessage(
+  conversationId: string,
+  message: ConversationPreviewMessage,
+  currentUserId?: string,
+  selectedConversationId?: string
+): Conversation | null {
+  if (!currentUserId) {
+    return null;
+  }
+
+  const sender = message.sender || fallbackChatUser(message.senderId);
+  const otherParticipant =
+    message.senderId === currentUserId
+      ? fallbackChatUser(message.receiverId)
+      : sender;
+  const participant1Id =
+    message.senderId === currentUserId
+      ? message.senderId
+      : message.receiverId === currentUserId
+        ? message.receiverId
+        : currentUserId;
+  const participant2Id = participant1Id === message.senderId ? message.receiverId : message.senderId;
+
+  return {
+    id: conversationId,
+    participant1Id,
+    participant2Id,
+    participant1: participant1Id === sender.id ? sender : fallbackChatUser(participant1Id),
+    participant2: participant2Id === sender.id ? sender : fallbackChatUser(participant2Id),
+    otherParticipant,
+    lastMessage: {
+      id: message.id,
+      content: message.content,
+      contentType: message.contentType,
+      senderId: message.senderId,
+      status: message.status,
+      createdAt: message.createdAt,
+    },
+    lastMessageAt: message.createdAt,
+    unreadCount:
+      message.senderId !== currentUserId && conversationId !== selectedConversationId ? 1 : 0,
+    createdAt: message.createdAt,
+    updatedAt: message.updatedAt,
+  };
+}
 
 export default function ChatList({ 
   selectedConversationId, 
@@ -212,9 +278,19 @@ export default function ChatList({
           return [conv, ...updated];
         }
         
-        // Refresh to get new conversation
+        const instantConversation = buildInstantConversationFromMessage(
+          data.conversationId,
+          data.message,
+          currentUserId,
+          selectedConversationId
+        );
+
+        // Refresh in the background for complete participant metadata, but do not
+        // make the user wait for REST before the new chat appears.
         void fetchConversations(undefined, true);
-        return previousConversations;
+        return instantConversation
+          ? [instantConversation, ...previousConversations]
+          : previousConversations;
       });
     };
 

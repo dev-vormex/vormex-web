@@ -14,8 +14,20 @@ export const authAPI = {
     return apiClient.get('/auth/me') as Promise<User>;
   },
 
+  logout: async (): Promise<{ success: boolean }> => {
+    return apiClient.post('/auth/logout', {}) as Promise<{ success: boolean }>;
+  },
+
   googleSignIn: async (idToken: string): Promise<AuthResponse> => {
     return apiClient.post('/auth/google', { idToken }) as Promise<AuthResponse>;
+  },
+
+  googleCodeSignIn: async (data: {
+    code: string;
+    codeVerifier: string;
+    redirectUri: string;
+  }): Promise<AuthResponse> => {
+    return apiClient.post('/auth/google/code', data) as Promise<AuthResponse>;
   },
 
   forgotPassword: async (email: string): Promise<{ message: string }> => {
@@ -23,15 +35,14 @@ export const authAPI = {
   },
 
   resetPassword: async (token: string, newPassword: string): Promise<{ message: string }> => {
-    return apiClient.post(`/auth/reset-password?token=${token}`, { newPassword }) as Promise<{ message: string }>;
+    return apiClient.post('/auth/reset-password', { token, newPassword }) as Promise<{ message: string }>;
   },
 
   verifyEmail: async (token: string): Promise<{ message: string }> => {
-    return apiClient.get(`/auth/verify-email?token=${token}`) as Promise<{ message: string }>;
+    return apiClient.get(`/auth/verify-email?token=${encodeURIComponent(token)}`) as Promise<{ message: string }>;
   },
 
   resendVerification: async (email: string): Promise<{ message: string }> => {
     return apiClient.post('/auth/resend-verification', { email }) as Promise<{ message: string }>;
   },
 };
-

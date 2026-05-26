@@ -1,7 +1,11 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { initializeSocket, sendChatTyping } from '@/lib/socket';
+import {
+  initializeSocket,
+  sendChatMessage as sendRealtimeChatMessage,
+  sendChatTyping,
+} from '@/lib/socket';
 import { uploadChatMedia, getMessageLimitStatus, sendMessage, type Message, type MessageLimitStatus } from '@/lib/api/chat';
 import { getConnectionStatus, sendConnectionRequest, type ConnectionStatus } from '@/lib/api/connections';
 import { cn } from '@/lib/utils';
@@ -102,6 +106,17 @@ interface FilePreview {
 }
 
 const AI_LEARNING_MESSAGE = 'ai model is learning please give it some time';
+
+function shouldFallbackToRestSend(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+
+  return (
+    message.includes('realtime connection unavailable') ||
+    message.includes('not authenticated') ||
+    message.includes('socket authentication failed') ||
+    message.includes('acknowledgement timed out')
+  );
+}
 
 export default function ChatInput({
   conversationId,
@@ -549,7 +564,24 @@ export default function ChatInput({
     data: Parameters<typeof sendMessage>[1],
     options?: { optimisticId?: string }
   ) => {
-    const sentMessage = await sendMessage(conversationId, data);
+    const payload = {
+      ...data,
+      clientMessageId: data.clientMessageId || options?.optimisticId,
+    };
+
+    let sentMessage: Message;
+    try {
+      sentMessage = await sendRealtimeChatMessage({
+        conversationId,
+        ...payload,
+      });
+    } catch (error) {
+      if (!shouldFallbackToRestSend(error)) {
+        throw error;
+      }
+
+      sentMessage = await sendMessage(conversationId, payload);
+    }
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('vormex:chat-message-confirmed', {
@@ -730,6 +762,7 @@ export default function ChatInput({
           content: textToSend,
           contentType: 'text',
           replyToId: currentReplyTo?.id,
+          clientMessageId: optimisticId,
         }, { optimisticId });
 
         if (selectedMessageEffect !== 'none') {

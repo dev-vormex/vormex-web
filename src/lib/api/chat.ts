@@ -15,6 +15,7 @@ export interface ChatUser {
 
 export interface Message {
   id: string;
+  clientMessageId?: string;
   conversationId: string;
   senderId: string;
   receiverId: string;
@@ -146,6 +147,7 @@ export async function sendMessage(
     fileName?: string;
     fileSize?: number;
     replyToId?: string;
+    clientMessageId?: string;
   }
 ): Promise<Message> {
   return apiClient.post(`/chat/conversations/${conversationId}/messages`, data);

@@ -28,6 +28,7 @@ export const queryKeys = {
   dailyHooks: () => ['daily-hooks'] as const,
   dailyMatches: () => ['daily-matches'] as const,
   smartMatchesFeed: () => ['smart-matches', 'feed'] as const,
+  smartMatches: (type: string = 'all') => ['smart-matches', type] as const,
   peopleFromCollege: () => ['people-from-college'] as const,
   findPeopleInitial: () => ['find-people-initial'] as const,
   peopleFilterOptions: () => ['people-filter-options'] as const,

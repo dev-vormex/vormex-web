@@ -10,7 +10,8 @@ interface LoginSectionProps {
   onEmailChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
-  onGoogleLogin: () => void;
+  onGoogleLogin: (idToken: string) => void | Promise<void>;
+  onGoogleError: (message: string) => void;
   isLoading: boolean;
   error: string | null;
   success: string | null;
@@ -24,6 +25,7 @@ export function LoginSection({
   onPasswordChange,
   onSubmit,
   onGoogleLogin,
+  onGoogleError,
   isLoading,
   error,
   success,
@@ -147,7 +149,7 @@ export function LoginSection({
           Sign in to <span className="vorm">vorm</span><span className="ex">ex</span>
         </h2>
         <OnboardingSocialProof />
-        <GoogleSignInButton onClick={onGoogleLogin} disabled={isLoading} />
+        <GoogleSignInButton onClick={onGoogleLogin} onError={onGoogleError} disabled={isLoading} />
         <span className="form__span">or use your email account</span>
         <input
           className="form__input"
@@ -199,4 +201,3 @@ export function LoginSection({
     </div>
   );
 }
-

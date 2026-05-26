@@ -358,6 +358,160 @@ export const getTypingHistory = async (limit = 20): Promise<{ races: TypingRace[
 };
 
 // ============================================
+// Social Arcade Types
+// ============================================
+
+export type ArcadeGameType = 'memory_match' | 'snake_duel' | 'paddle_volley' | 'maze_race_3d';
+export type ArcadeRoomStatus = 'waiting' | 'in_progress' | 'completed' | 'abandoned';
+export type ArcadeRole = 'host' | 'guest' | null;
+
+export interface ArcadePlayer {
+  id: string;
+  name: string;
+  username: string;
+  profileImage: string | null;
+  headline?: string | null;
+  college?: string | null;
+}
+
+export interface ArcadeCatalogGame {
+  type: ArcadeGameType;
+  title: string;
+  description: string;
+  minPlayers: number;
+  maxPlayers: number;
+  xpLabel: string;
+  mode: 'turn_based' | 'arcade' | '3d';
+}
+
+export interface ArcadeResult {
+  id: string;
+  roomId: string;
+  gameType: ArcadeGameType;
+  userId: string;
+  opponentId: string | null;
+  result: 'win' | 'loss' | 'draw';
+  score: number;
+  opponentScore: number;
+  xpEarned: number;
+  coinsEarned: number;
+  durationSeconds: number;
+  createdAt: string;
+  opponent?: ArcadePlayer | null;
+}
+
+export interface ArcadeRoom {
+  id: string;
+  gameType: ArcadeGameType;
+  inviteCode: string;
+  status: ArcadeRoomStatus;
+  seed: number;
+  hostReady: boolean;
+  guestReady: boolean;
+  hostScore: number;
+  guestScore: number;
+  winnerId: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  expiresAt: string | null;
+  currentUserRole: ArcadeRole;
+  canJoin: boolean;
+  playerCount: number;
+  players: {
+    host: ArcadePlayer | null;
+    guest: ArcadePlayer | null;
+    winner: ArcadePlayer | null;
+  };
+  results: ArcadeResult[];
+}
+
+export interface ArcadeLeaderboardEntry {
+  rank: number;
+  user: ArcadePlayer;
+  xp: number;
+  score: number;
+  gamesPlayed: number;
+}
+
+// ============================================
+// Social Arcade API Functions
+// ============================================
+
+export const getArcadeCatalog = async (): Promise<{ games: ArcadeCatalogGame[] }> => {
+  return apiClient.get('/games/arcade/catalog');
+};
+
+export const getArcadeRooms = async (
+  gameType?: ArcadeGameType | 'all',
+  limit = 20
+): Promise<{ rooms: ArcadeRoom[] }> => {
+  return apiClient.get('/games/arcade/rooms', {
+    params: { gameType: gameType === 'all' ? undefined : gameType, limit },
+  });
+};
+
+export const createArcadeRoom = async (
+  gameType: ArcadeGameType
+): Promise<{ room: ArcadeRoom }> => {
+  return apiClient.post('/games/arcade/rooms', { gameType });
+};
+
+export const getArcadeRoom = async (roomId: string): Promise<{ room: ArcadeRoom }> => {
+  return apiClient.get(`/games/arcade/rooms/${roomId}`);
+};
+
+export const getArcadeInvite = async (inviteCode: string): Promise<{ room: ArcadeRoom }> => {
+  return apiClient.get(`/games/arcade/invite/${inviteCode}`);
+};
+
+export const joinArcadeRoom = async (roomId: string): Promise<{ room: ArcadeRoom }> => {
+  return apiClient.post(`/games/arcade/rooms/${roomId}/join`);
+};
+
+export const joinArcadeInvite = async (inviteCode: string): Promise<{ room: ArcadeRoom }> => {
+  return apiClient.post(`/games/arcade/invite/${inviteCode}/join`);
+};
+
+export const setArcadeReady = async (
+  roomId: string,
+  ready: boolean
+): Promise<{ room: ArcadeRoom }> => {
+  return apiClient.post(`/games/arcade/rooms/${roomId}/ready`, { ready });
+};
+
+export const finishArcadeRoom = async (
+  roomId: string,
+  data: {
+    hostScore: number;
+    guestScore: number;
+    durationSeconds: number;
+    metadata?: Record<string, unknown>;
+  }
+): Promise<{ room: ArcadeRoom }> => {
+  return apiClient.post(`/games/arcade/rooms/${roomId}/finish`, data);
+};
+
+export const abandonArcadeRoom = async (roomId: string): Promise<{ room: ArcadeRoom }> => {
+  return apiClient.post(`/games/arcade/rooms/${roomId}/abandon`);
+};
+
+export const getArcadeHistory = async (limit = 20): Promise<{ results: ArcadeResult[] }> => {
+  return apiClient.get('/games/arcade/history', { params: { limit } });
+};
+
+export const getArcadeLeaderboard = async (
+  gameType?: ArcadeGameType | 'all',
+  limit = 20
+): Promise<{ leaderboard: ArcadeLeaderboardEntry[] }> => {
+  return apiClient.get('/games/arcade/leaderboard', {
+    params: { gameType: gameType === 'all' ? undefined : gameType, limit },
+  });
+};
+
+// ============================================
 // Admin - Seed Data
 // ============================================
 

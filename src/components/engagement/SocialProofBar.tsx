@@ -17,14 +17,25 @@ export default function SocialProofBar({ location }: { location?: string }) {
       const data = await getLiveActivity(location);
       setActivity(data);
     } catch (error) {
-      console.error('Failed to fetch live activity:', error);
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`Live activity unavailable${status ? ` (${status})` : ''}.`);
+      }
+      setActivity(null);
     }
   }, [location]);
 
   useEffect(() => {
-    fetchActivity();
-    const interval = setInterval(fetchActivity, 30000);
-    return () => clearInterval(interval);
+    const initialFetch = setTimeout(() => {
+      void fetchActivity();
+    }, 0);
+    const interval = setInterval(() => {
+      void fetchActivity();
+    }, 30000);
+    return () => {
+      clearTimeout(initialFetch);
+      clearInterval(interval);
+    };
   }, [fetchActivity]);
 
   useEffect(() => {

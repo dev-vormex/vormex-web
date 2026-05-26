@@ -1,14 +1,17 @@
 // Socket.IO Client for Real-time Features
 
 import { io, Socket } from 'socket.io-client';
-import { getToken } from '@/lib/auth/authHelpers';
 import { SOCKET_URL } from '@/lib/utils/constants';
+import type { ChatUser, Message } from '@/lib/api/chat';
 
 let socket: Socket | null = null;
-let socketToken: string | null = null;
 let lifecycleHandlersRegistered = false;
+let socketAuthenticated = false;
 const joinedChatRooms = new Set<string>();
 let feedRoomJoined = false;
+const CHAT_CONNECT_GRACE_MS = 1500;
+const CHAT_AUTH_GRACE_MS = 2500;
+const CHAT_SEND_ACK_TIMEOUT_MS = 8000;
 
 // Reaction types matching backend enum
 export type ReactionType = 'LIKE' | 'CELEBRATE' | 'SUPPORT' | 'INSIGHTFUL' | 'CURIOUS';
@@ -18,13 +21,15 @@ export interface ReactionSummary {
   count: number;
 }
 
+type SocketObject = Record<string, unknown>;
+
 export interface SocketEventHandlers {
   onConnect?: () => void;
   onDisconnect?: () => void;
   onError?: (error: { message: string }) => void;
   
   // Post events
-  onPostCreated?: (data: { post: any }) => void;
+  onPostCreated?: (data: { post: unknown }) => void;
   onPostLiked?: (data: { 
     postId: string; 
     userId: string; 
@@ -43,24 +48,24 @@ export interface SocketEventHandlers {
   }) => void;
   
   // Comment events
-  onCommentCreated?: (data: { postId: string; comment: any; commentsCount: number }) => void;
+  onCommentCreated?: (data: { postId: string; comment: unknown; commentsCount: number }) => void;
   onCommentLiked?: (data: { commentId: string; userId: string; liked: boolean; likesCount: number }) => void;
   
   // Poll events
   onPollUpdated?: (data: { 
     postId: string; 
-    pollOptions: any[]; 
+    pollOptions: unknown[];
     voterId: string;
     votedOptionId?: string;
     totalVotes?: number;
   }) => void;
   
   // Notification events
-  onNotificationComment?: (data: any) => void;
-  onNotificationMention?: (data: any) => void;
-  onNotificationLike?: (data: any) => void;
-  onNotificationReaction?: (data: any) => void;
-  onNotificationCommentLike?: (data: any) => void;
+  onNotificationComment?: (data: SocketObject) => void;
+  onNotificationMention?: (data: SocketObject) => void;
+  onNotificationLike?: (data: SocketObject) => void;
+  onNotificationReaction?: (data: SocketObject) => void;
+  onNotificationCommentLike?: (data: SocketObject) => void;
   
   // User events
   onUserOnline?: (data: { userId: string }) => void;
@@ -71,15 +76,15 @@ export interface SocketEventHandlers {
   onLocationRequest?: (data: { message: string; timestamp: Date }) => void;
   
   // Story events
-  onStoryCreated?: (data: { story: any; author: any; timestamp: Date }) => void;
+  onStoryCreated?: (data: { story: unknown; author: unknown; timestamp: Date }) => void;
   onStoryDeleted?: (data: { storyId: string; authorId: string; timestamp: Date }) => void;
   onStoryViewed?: (data: { storyId: string; viewerId: string; viewCount: number; timestamp: Date }) => void;
-  onStoryReaction?: (data: { storyId: string; user: any; reaction: string; reactionCount: number; timestamp: Date }) => void;
-  onStoryReply?: (data: { storyId: string; reply: any; timestamp: Date }) => void;
+  onStoryReaction?: (data: { storyId: string; user: unknown; reaction: string; reactionCount: number; timestamp: Date }) => void;
+  onStoryReply?: (data: { storyId: string; reply: unknown; timestamp: Date }) => void;
   
   // Chat events
-  onChatNewMessage?: (data: { conversationId: string; message: any }) => void;
-  onChatNotification?: (data: { type: string; conversationId: string; message: any; sender: any }) => void;
+  onChatNewMessage?: (data: { conversationId: string; message: Message }) => void;
+  onChatNotification?: (data: { type: string; conversationId: string; message: Message; sender: ChatUser }) => void;
   onChatUserTyping?: (data: { conversationId: string; userId: string; isTyping: boolean }) => void;
   onChatMessagesDelivered?: (data: { conversationId: string; deliveredAt: Date }) => void;
   onChatMessagesRead?: (data: { conversationId: string; readBy: string; readAt: Date }) => void;
@@ -97,7 +102,7 @@ export interface SocketEventHandlers {
     likesCount?: number;
     commentsCount?: number;
     sharesCount?: number;
-    comment?: { id: string; author: any; content: string; parentId?: string };
+    comment?: { id: string; author: unknown; content: string; parentId?: string };
   }) => void;
   
   // New notification event
@@ -106,13 +111,130 @@ export interface SocketEventHandlers {
     type: string;
     title: string;
     body: string;
-    actor: any;
-    post?: any;
-    reel?: any;
-    data: any;
+    actor: unknown;
+    post?: unknown;
+    reel?: unknown;
+    data: SocketObject;
     isRead: boolean;
     createdAt: string;
   }) => void;
+}
+
+export interface ChatSendPayload {
+  conversationId: string;
+  content: string;
+  contentType?: string;
+  mediaUrl?: string;
+  mediaType?: string;
+  fileName?: string;
+  fileSize?: number;
+  replyToId?: string;
+  clientMessageId?: string;
+}
+
+interface ChatSendAck {
+  ok?: boolean;
+  message?: Message;
+  error?: string;
+}
+
+function waitForSocketConnect(
+  sock: Socket,
+  timeoutMs = CHAT_CONNECT_GRACE_MS
+): Promise<boolean> {
+  if (sock.connected) {
+    return Promise.resolve(true);
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+
+    function finish(connected: boolean) {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timer);
+      sock.off('connect', handleConnect);
+      sock.off('connect_error', handleConnectError);
+      resolve(connected);
+    }
+
+    function handleConnect() {
+      finish(true);
+    }
+
+    function handleConnectError() {
+      finish(false);
+    }
+
+    const timer = setTimeout(() => finish(false), timeoutMs);
+
+    sock.once('connect', handleConnect);
+    sock.once('connect_error', handleConnectError);
+    sock.connect();
+  });
+}
+
+function waitForSocketReady(
+  sock: Socket,
+  timeoutMs = CHAT_AUTH_GRACE_MS
+): Promise<boolean> {
+  if (sock.connected && socketAuthenticated) {
+    return Promise.resolve(true);
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+
+    function finish(ready: boolean) {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timer);
+      sock.off('socket:authenticated', handleAuthenticated);
+      sock.off('socket:unauthenticated', handleUnauthenticated);
+      sock.off('connect_error', handleConnectError);
+      sock.off('disconnect', handleDisconnect);
+      resolve(ready);
+    }
+
+    function handleAuthenticated() {
+      socketAuthenticated = true;
+      finish(true);
+    }
+
+    function handleUnauthenticated() {
+      socketAuthenticated = false;
+      finish(false);
+    }
+
+    function handleConnectError() {
+      socketAuthenticated = false;
+      finish(false);
+    }
+
+    function handleDisconnect() {
+      socketAuthenticated = false;
+      finish(false);
+    }
+
+    const timer = setTimeout(() => finish(false), timeoutMs);
+
+    sock.once('socket:authenticated', handleAuthenticated);
+    sock.once('socket:unauthenticated', handleUnauthenticated);
+    sock.once('connect_error', handleConnectError);
+    sock.once('disconnect', handleDisconnect);
+
+    if (!sock.connected) {
+      sock.connect();
+    } else if (socketAuthenticated) {
+      finish(true);
+    }
+  });
 }
 
 function ensureSocketLifecycle(sock: Socket): void {
@@ -123,18 +245,27 @@ function ensureSocketLifecycle(sock: Socket): void {
   lifecycleHandlersRegistered = true;
 
   sock.on('connect', () => {
+    socketAuthenticated = false;
     console.log('✅ Socket connected:', sock.id);
 
     if (feedRoomJoined) {
       sock.emit('feed:join');
     }
+  });
 
+  sock.on('socket:authenticated', () => {
+    socketAuthenticated = true;
     joinedChatRooms.forEach((conversationId) => {
       sock.emit('chat:join', { conversationId });
     });
   });
 
+  sock.on('socket:unauthenticated', () => {
+    socketAuthenticated = false;
+  });
+
   sock.on('disconnect', (reason) => {
+    socketAuthenticated = false;
     console.log('❌ Socket disconnected:', reason);
   });
 
@@ -148,7 +279,7 @@ function ensureSocketLifecycle(sock: Socket): void {
   });
 }
 
-function bindSocketHandler<T extends (...args: any[]) => void>(
+function bindSocketHandler<T extends (...args: never[]) => void>(
   sock: Socket,
   event: string,
   handler?: T
@@ -157,26 +288,15 @@ function bindSocketHandler<T extends (...args: any[]) => void>(
     return;
   }
 
-  sock.off(event, handler);
-  sock.on(event, handler);
+  const listener = handler as unknown as (...args: unknown[]) => void;
+  sock.off(event, listener);
+  sock.on(event, listener);
 }
 
 function getOrCreateSocket(): Socket {
-  const token = getToken() ?? null;
-
-  if (socket && socketToken !== token) {
-    socket.disconnect();
-    socket = null;
-    lifecycleHandlersRegistered = false;
-  }
-
   if (!socket) {
-    if (!token) {
-      console.warn('⚠️ No auth token found, socket connection may fail');
-    }
-
     socket = io(SOCKET_URL, {
-      auth: token ? { token } : {},
+      withCredentials: true,
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 10,
@@ -185,12 +305,8 @@ function getOrCreateSocket(): Socket {
       randomizationFactor: 0.25,
       timeout: 10000,
     });
-    socketToken = token;
     ensureSocketLifecycle(socket);
   } else {
-    socket.auth = token ? { token } : {};
-    socketToken = token;
-
     if (!socket.connected) {
       socket.connect();
     }
@@ -210,6 +326,13 @@ export function initializeSocket(handlers?: SocketEventHandlers): Socket {
   }
 
   return sock;
+}
+
+/**
+ * True only when chat can be sent over realtime without any connect/auth wait.
+ */
+export function isChatSocketReady(): boolean {
+  return Boolean(socket?.connected && socketAuthenticated);
 }
 
 /**
@@ -278,8 +401,8 @@ export function disconnectSocket(): void {
   if (socket) {
     socket.disconnect();
     socket = null;
-    socketToken = null;
     lifecycleHandlersRegistered = false;
+    socketAuthenticated = false;
     joinedChatRooms.clear();
   }
 }
@@ -382,7 +505,10 @@ export function sendTypingIndicator(postId: string, isTyping: boolean): void {
  */
 export function joinChatRoom(conversationId: string): void {
   joinedChatRooms.add(conversationId);
-  getOrCreateSocket().emit('chat:join', { conversationId });
+  const sock = getOrCreateSocket();
+  if (sock.connected && socketAuthenticated) {
+    sock.emit('chat:join', { conversationId });
+  }
 }
 
 /**
@@ -390,37 +516,62 @@ export function joinChatRoom(conversationId: string): void {
  */
 export function leaveChatRoom(conversationId: string): void {
   joinedChatRooms.delete(conversationId);
-  getOrCreateSocket().emit('chat:leave', { conversationId });
+  if (socket?.connected && socketAuthenticated) {
+    socket.emit('chat:leave', { conversationId });
+  }
 }
 
 /**
  * Send a chat message via WebSocket
  */
-export function sendChatMessage(data: {
-  conversationId: string;
-  content: string;
-  contentType?: string;
-  mediaUrl?: string;
-  mediaType?: string;
-  fileName?: string;
-  fileSize?: number;
-  replyToId?: string;
-}): void {
-  getOrCreateSocket().emit('chat:send_message', data);
+export async function sendChatMessage(data: ChatSendPayload): Promise<Message> {
+  const sock = getOrCreateSocket();
+  const connected = await waitForSocketConnect(sock);
+  const ready = connected && (await waitForSocketReady(sock));
+
+  if (!ready) {
+    throw new Error('Realtime connection unavailable');
+  }
+
+  return new Promise((resolve, reject) => {
+    sock.timeout(CHAT_SEND_ACK_TIMEOUT_MS).emit(
+      'chat:send_message',
+      data,
+      (error: Error | null, response?: ChatSendAck) => {
+        if (error) {
+          reject(new Error('Realtime send acknowledgement timed out'));
+          return;
+        }
+
+        if (response?.ok && response.message) {
+          resolve(response.message);
+          return;
+        }
+
+        reject(new Error(response?.error || 'Failed to send message'));
+      }
+    );
+  });
 }
 
 /**
  * Send typing indicator for chat
  */
 export function sendChatTyping(conversationId: string, isTyping: boolean): void {
-  getOrCreateSocket().emit('chat:typing', { conversationId, isTyping });
+  const sock = getOrCreateSocket();
+  if (sock.connected && socketAuthenticated) {
+    sock.emit('chat:typing', { conversationId, isTyping });
+  }
 }
 
 /**
  * Mark chat messages as read
  */
 export function markChatAsRead(conversationId: string): void {
-  getOrCreateSocket().emit('chat:mark_read', { conversationId });
+  const sock = getOrCreateSocket();
+  if (sock.connected && socketAuthenticated) {
+    sock.emit('chat:mark_read', { conversationId });
+  }
 }
 
 /**
@@ -481,7 +632,39 @@ export function createReelComment(
   socket?.emit('reel:comment', { reelId, content, parentId, mentions });
 }
 
-export default {
+// ============================================
+// ARCADE SOCKET FUNCTIONS
+// ============================================
+
+/**
+ * Join a social arcade room for live updates.
+ */
+export function joinArcadeRoomSocket(data: { roomId?: string; inviteCode?: string }): void {
+  getOrCreateSocket().emit('arcade:join_room', data);
+}
+
+/**
+ * Leave a social arcade room without abandoning the persisted room.
+ */
+export function leaveArcadeRoomSocket(roomId: string): void {
+  getOrCreateSocket().emit('arcade:leave_room', { roomId });
+}
+
+/**
+ * Toggle ready state over Socket.IO.
+ */
+export function sendArcadeReady(roomId: string, ready: boolean): void {
+  getOrCreateSocket().emit('arcade:ready', { roomId, ready });
+}
+
+/**
+ * Send gameplay input or compact state snapshots to the current arcade room.
+ */
+export function sendArcadeInput(roomId: string, type: string, data: unknown): void {
+  getOrCreateSocket().emit('arcade:input', { roomId, type, data });
+}
+
+const socketApi = {
   initializeSocket,
   getSocket,
   disconnectSocket,
@@ -509,4 +692,10 @@ export default {
   leaveReelRoom,
   likeReel,
   createReelComment,
+  joinArcadeRoomSocket,
+  leaveArcadeRoomSocket,
+  sendArcadeInput,
+  sendArcadeReady,
 };
+
+export default socketApi;

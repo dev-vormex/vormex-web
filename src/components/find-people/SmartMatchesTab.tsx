@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { matchingAPI, type SmartMatch } from '@/lib/api/matching';
+import { FIND_PEOPLE_STALE_TIME, queryKeys } from '@/lib/queryKeys';
 
 const GOAL_LABELS: Record<string, string> = {
   learn_coding: 'Coding & Tech',
@@ -27,26 +29,17 @@ const GOAL_LABELS: Record<string, string> = {
 
 export function SmartMatchesTab() {
   const router = useRouter();
-  const [matches, setMatches] = useState<SmartMatch[]>([]);
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
-
-  const fetchMatches = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await matchingAPI.getSmartMatches({
-        type: filter as any,
+  const { data, isLoading: loading } = useQuery({
+    queryKey: queryKeys.smartMatches(filter),
+    queryFn: () =>
+      matchingAPI.getSmartMatches({
+        type: filter as 'all' | 'same_campus' | 'same_goal' | 'mentor' | 'mentee',
         limit: 20,
-      });
-      setMatches(data.matches);
-    } catch (error) {
-      console.error('Failed to fetch smart matches:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [filter]);
-
-  useEffect(() => { fetchMatches(); }, [fetchMatches]);
+      }),
+    staleTime: FIND_PEOPLE_STALE_TIME,
+  });
+  const matches: SmartMatch[] = data?.matches ?? [];
 
   const filters = [
     { id: 'all', label: 'Best Matches' },

@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Sparkles } from 'lucide-react';
+import { Minus, X } from 'lucide-react';
 import { AgentChatPanel } from './AgentChatPanel';
 
 interface AgentModeOverlayProps {
@@ -10,129 +11,234 @@ interface AgentModeOverlayProps {
   onClose: () => void;
 }
 
-const EDGE_BLUR = 60;
+const MIN_PANEL_WIDTH = 320;
+const MIN_PANEL_HEIGHT = 420;
+const PANEL_VIEWPORT_GAP = 24;
+const PANEL_VERTICAL_OFFSET = 112;
+
+type ResizeDirection = 'corner' | 'left' | 'top';
+
+type ActiveResize = {
+  direction: ResizeDirection;
+  startX: number;
+  startY: number;
+  startWidth: number;
+  startHeight: number;
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getMaxPanelSize() {
+  if (typeof window === 'undefined') {
+    return { width: 440, height: 640 };
+  }
+
+  return {
+    width: Math.max(MIN_PANEL_WIDTH, window.innerWidth - PANEL_VIEWPORT_GAP),
+    height: Math.max(MIN_PANEL_HEIGHT, window.innerHeight - PANEL_VERTICAL_OFFSET),
+  };
+}
 
 export function AgentModeOverlay({ isOpen, onClose }: AgentModeOverlayProps) {
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isOpen]);
-
   return (
     <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-[100] flex items-center justify-center"
-        >
-          {/* Backdrop - click to close */}
-          <button
-            onClick={onClose}
-            className="absolute inset-0 bg-black/20 dark:bg-black/40 backdrop-blur-sm"
-            aria-label="Close"
-          />
+      {isOpen && <AgentModeShell key="agent-mode-shell" onClose={onClose} />}
+    </AnimatePresence>
+  );
+}
 
-          {/* Blurred edge layers - Perplexity Comet style */}
-          <div className="absolute inset-0 pointer-events-none">
-            {/* Top edge */}
-            <div
-              className="absolute top-0 left-0 right-0 h-[60px] backdrop-blur-xl bg-gradient-to-b from-blue-500/10 to-transparent"
-              style={{ height: EDGE_BLUR }}
-            />
-            {/* Bottom edge */}
-            <div
-              className="absolute bottom-0 left-0 right-0 backdrop-blur-xl bg-gradient-to-t from-blue-500/10 to-transparent"
-              style={{ height: EDGE_BLUR }}
-            />
-            {/* Left edge */}
-            <div
-              className="absolute top-0 bottom-0 left-0 backdrop-blur-xl bg-gradient-to-r from-blue-500/10 to-transparent"
-              style={{ width: EDGE_BLUR }}
-            />
-            {/* Right edge */}
-            <div
-              className="absolute top-0 bottom-0 right-0 backdrop-blur-xl bg-gradient-to-l from-blue-500/10 to-transparent"
-              style={{ width: EDGE_BLUR }}
-            />
-          </div>
+function AgentModeShell({ onClose }: Pick<AgentModeOverlayProps, 'onClose'>) {
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [panelSize, setPanelSize] = useState({ width: 440, height: 640 });
+  const resizeStateRef = useRef<ActiveResize | null>(null);
+  const bodyStyleRef = useRef<{ cursor: string; userSelect: string } | null>(null);
 
-          {/* Blue glow / wave effect - animated border */}
-          <div className="absolute inset-0 pointer-events-none overflow-hidden">
-            <motion.div
-              className="absolute inset-0 border-2 border-blue-500/20 rounded-none"
-              style={{
-                boxShadow: `
-                  0 0 60px rgba(59, 130, 246, 0.15),
-                  0 0 120px rgba(59, 130, 246, 0.08),
-                  inset 0 0 60px rgba(59, 130, 246, 0.03)
-                `,
-              }}
-              animate={{
-                boxShadow: [
-                  `0 0 60px rgba(59, 130, 246, 0.15), 0 0 120px rgba(59, 130, 246, 0.08), inset 0 0 60px rgba(59, 130, 246, 0.03)`,
-                  `0 0 80px rgba(59, 130, 246, 0.2), 0 0 140px rgba(59, 130, 246, 0.1), inset 0 0 60px rgba(59, 130, 246, 0.05)`,
-                  `0 0 60px rgba(59, 130, 246, 0.15), 0 0 120px rgba(59, 130, 246, 0.08), inset 0 0 60px rgba(59, 130, 246, 0.03)`,
-                ],
-              }}
-              transition={{
-                duration: 3,
-                repeat: Infinity,
-                ease: 'easeInOut',
-              }}
-            />
-          </div>
+  useEffect(() => {
+    const stopResize = () => {
+      resizeStateRef.current = null;
 
-          {/* Center chat panel with blue glow */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 10 }}
+      if (bodyStyleRef.current) {
+        document.body.style.cursor = bodyStyleRef.current.cursor;
+        document.body.style.userSelect = bodyStyleRef.current.userSelect;
+        bodyStyleRef.current = null;
+      }
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const activeResize = resizeStateRef.current;
+      if (!activeResize) return;
+
+      const maxPanelSize = getMaxPanelSize();
+      const isWidthResize =
+        activeResize.direction === 'left' || activeResize.direction === 'corner';
+      const isHeightResize =
+        activeResize.direction === 'top' || activeResize.direction === 'corner';
+      const nextWidth = isWidthResize
+        ? activeResize.startWidth + (activeResize.startX - event.clientX)
+        : activeResize.startWidth;
+      const nextHeight = isHeightResize
+        ? activeResize.startHeight + (activeResize.startY - event.clientY)
+        : activeResize.startHeight;
+
+      setPanelSize({
+        width: clamp(Math.round(nextWidth), MIN_PANEL_WIDTH, maxPanelSize.width),
+        height: clamp(Math.round(nextHeight), MIN_PANEL_HEIGHT, maxPanelSize.height),
+      });
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', stopResize);
+    window.addEventListener('pointercancel', stopResize);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', stopResize);
+      window.removeEventListener('pointercancel', stopResize);
+      stopResize();
+    };
+  }, []);
+
+  const startResize =
+    (direction: ResizeDirection, cursor: string) =>
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      resizeStateRef.current = {
+        direction,
+        startX: event.clientX,
+        startY: event.clientY,
+        startWidth: panelSize.width,
+        startHeight: panelSize.height,
+      };
+
+      if (!bodyStyleRef.current) {
+        bodyStyleRef.current = {
+          cursor: document.body.style.cursor,
+          userSelect: document.body.style.userSelect,
+        };
+      }
+
+      document.body.style.cursor = cursor;
+      document.body.style.userSelect = 'none';
+    };
+
+  return (
+    <div className="pointer-events-none fixed inset-0 z-[1000]">
+      <AnimatePresence mode="wait">
+        {isMinimized ? (
+          <motion.button
+            key="agent-bubble"
+            type="button"
+            initial={{ opacity: 0, scale: 0.85, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 10 }}
-            transition={{ duration: 0.25, ease: 'easeOut' }}
-            className="relative z-10 w-full max-w-2xl mx-4 rounded-2xl bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 shadow-2xl overflow-hidden"
+            exit={{ opacity: 0, scale: 0.85, y: 12 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setIsMinimized(false)}
+            className="pointer-events-auto fixed bottom-24 right-5 flex h-16 w-16 items-center justify-center rounded-full border border-blue-200/80 bg-white shadow-2xl shadow-blue-950/20 ring-4 ring-blue-500/10 transition-transform hover:scale-105 dark:border-blue-900/60 dark:bg-neutral-950"
+            aria-label="Open Vormex AI"
+            title="Open Vormex AI"
+          >
+            <Image
+              src="/logo.png"
+              alt=""
+              width={44}
+              height={44}
+              className="h-11 w-11 rounded-full object-contain"
+              priority
+            />
+            <span className="absolute right-1 top-1 h-3 w-3 rounded-full border-2 border-white bg-emerald-400 dark:border-neutral-950" />
+          </motion.button>
+        ) : (
+          <motion.div
+            key="agent-panel"
+            initial={{ opacity: 0, scale: 0.96, y: 14 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 14 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            className="pointer-events-auto fixed bottom-24 right-5 flex max-h-[calc(100vh-7rem)] max-w-[calc(100vw-1.5rem)] min-h-[420px] min-w-[320px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl shadow-blue-950/20 dark:border-neutral-800 dark:bg-neutral-950"
             style={{
-              boxShadow: `
-                0 0 0 1px rgba(59, 130, 246, 0.1),
-                0 0 40px rgba(59, 130, 246, 0.12),
-                0 25px 50px -12px rgba(0, 0, 0, 0.25)
-              `,
+              width: `min(${panelSize.width}px, calc(100vw - 24px))`,
+              height: `min(${panelSize.height}px, calc(100vh - 112px))`,
             }}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-blue-500 to-blue-600 dark:from-blue-600 dark:to-blue-700 border-b border-blue-400/20">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                  <Sparkles className="w-5 h-5 text-white" />
+            <div className="flex h-full min-h-0 w-full flex-col">
+              <button
+                type="button"
+                onPointerDown={startResize('corner', 'nwse-resize')}
+                className="absolute left-2 top-2 z-30 flex h-7 w-7 cursor-nwse-resize touch-none items-center justify-center rounded-lg border border-blue-200 bg-white/95 text-blue-500 shadow-sm transition-colors hover:bg-blue-50 dark:border-blue-900/70 dark:bg-neutral-950/95 dark:text-blue-300 dark:hover:bg-blue-950/50"
+                aria-label="Resize Vormex AI"
+                title="Drag to resize"
+              >
+                <span className="h-3 w-3 rounded-sm border-l-2 border-t-2 border-current" />
+              </button>
+              <button
+                type="button"
+                onPointerDown={startResize('top', 'ns-resize')}
+                className="absolute left-12 right-16 top-0 z-20 h-2 cursor-ns-resize touch-none rounded-t-2xl transition-colors hover:bg-blue-500/20"
+                aria-label="Resize Vormex AI height"
+                title="Drag to resize height"
+                tabIndex={-1}
+              />
+              <button
+                type="button"
+                onPointerDown={startResize('left', 'ew-resize')}
+                className="absolute bottom-12 left-0 top-12 z-20 w-2 cursor-ew-resize touch-none transition-colors hover:bg-blue-500/20"
+                aria-label="Resize Vormex AI width"
+                title="Drag to resize width"
+                tabIndex={-1}
+              />
+
+              <div className="flex items-center justify-between border-b border-blue-100 bg-white py-3 pl-11 pr-4 dark:border-blue-950/60 dark:bg-neutral-950">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 ring-1 ring-blue-100 dark:bg-blue-950/40 dark:ring-blue-900/60">
+                    <Image
+                      src="/logo.png"
+                      alt=""
+                      width={28}
+                      height={28}
+                      className="h-7 w-7 rounded-full object-contain"
+                      priority
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="truncate text-sm font-semibold text-gray-950 dark:text-white">
+                      Vormex AI
+                    </h2>
+                    <p className="truncate text-xs text-gray-500 dark:text-neutral-400">
+                      App-aware assistant
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="font-semibold text-white text-sm">
-                    Vormex AI Agent
-                  </h2>
-                  <p className="text-white/80 text-xs">Ask me anything</p>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setIsMinimized(true)}
+                    className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white"
+                    aria-label="Minimize Vormex AI"
+                    title="Minimize"
+                    type="button"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={onClose}
+                    className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white"
+                    aria-label="Close Vormex AI"
+                    title="Close"
+                    type="button"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
-              <button
-                onClick={onClose}
-                className="p-2 rounded-full hover:bg-white/20 transition-colors text-white"
-                aria-label="Close agent"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            {/* Chat content */}
-            <AgentChatPanel onClose={onClose} onNavigate={onClose} />
+              <AgentChatPanel onNavigate={() => setIsMinimized(true)} />
+            </div>
           </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

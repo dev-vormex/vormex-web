@@ -12,7 +12,8 @@ interface SignupSectionProps {
   onEmailChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
-  onGoogleLogin: () => void;
+  onGoogleLogin: (idToken: string) => void | Promise<void>;
+  onGoogleError: (message: string) => void;
   isLoading: boolean;
   error: string | null;
   success: string | null;
@@ -28,6 +29,7 @@ export function SignupSection({
   onPasswordChange,
   onSubmit,
   onGoogleLogin,
+  onGoogleError,
   isLoading,
   error,
   success,
@@ -149,7 +151,12 @@ export function SignupSection({
       <form id="a-form" className="form" onSubmit={onSubmit}>
         <h2 className="form_title title">Create Account</h2>
         <OnboardingSocialProof />
-        <GoogleSignInButton onClick={onGoogleLogin} disabled={isLoading} text="Sign up with Google" />
+        <GoogleSignInButton
+          onClick={onGoogleLogin}
+          onError={onGoogleError}
+          disabled={isLoading}
+          text="Sign up with Google"
+        />
         <span className="form__span">or use email for registration</span>
         <input
           className="form__input"
@@ -201,7 +208,8 @@ export function SignupSection({
             }
           }}
           required
-          minLength={8}
+          minLength={12}
+          maxLength={128}
         />
         {error && <div className="error-message">{error}</div>}
         {success && <div className="success-message">{success}</div>}
@@ -218,4 +226,3 @@ export function SignupSection({
     </div>
   );
 }
-

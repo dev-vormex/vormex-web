@@ -31,6 +31,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       client.setQueryDefaults(['profile-activity-heatmap'], { staleTime: ACTIVITY_STALE_TIME });
       client.setQueryDefaults(['find-people-initial'], { staleTime: FIND_PEOPLE_STALE_TIME });
       client.setQueryDefaults(['people-filter-options'], { staleTime: FIND_PEOPLE_STALE_TIME });
+      client.setQueryDefaults(['smart-matches'], { staleTime: FIND_PEOPLE_STALE_TIME });
       client.setQueryDefaults(['chat-conversations'], { staleTime: CHAT_STALE_TIME });
       client.setQueryDefaults(['chat-conversation'], { staleTime: CHAT_STALE_TIME });
       client.setQueryDefaults(['chat-messages'], { staleTime: CHAT_STALE_TIME });
