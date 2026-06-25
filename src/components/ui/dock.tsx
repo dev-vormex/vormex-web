@@ -287,7 +287,15 @@ export function VormexDock() {
   const { user } = useAuth();
 
   // Hide dock on auth/onboarding and full-screen messaging routes to avoid input overlap.
-  const hideDockPrefixes = ['/login', '/forgot-password', '/reset-password', '/verify-email', '/onboarding', '/messages'];
+  const hideDockPrefixes = [
+    '/login',
+    '/forgot-password',
+    '/reset-password',
+    '/verify-email',
+    '/onboarding',
+    '/messages',
+    '/vormex-delete-account',
+  ];
   if (hideDockPrefixes.some((prefix) => pathname.startsWith(prefix))) {
     return null;
   }

@@ -2,6 +2,7 @@ import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'ax
 import Cookies from 'js-cookie';
 import { API_URL } from '@/lib/utils/constants';
 import { removeToken } from '@/lib/auth/authHelpers';
+import { getInstallHeaders } from '@/lib/device/installId';
 
 const CSRF_COOKIE = 'vx_csrf';
 const AUTH_PRESENT_COOKIE = 'vx_auth_present';
@@ -48,6 +49,9 @@ const apiClient: AxiosInstance = axios.create({
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     if (typeof window !== 'undefined') {
+      if (config.headers) {
+        Object.assign(config.headers, getInstallHeaders());
+      }
       const method = (config.method || 'get').toLowerCase();
       const csrfToken = Cookies.get(CSRF_COOKIE);
       if (csrfToken && UNSAFE_METHODS.has(method) && config.headers) {
@@ -99,6 +103,7 @@ apiClient.interceptors.response.use(
             withCredentials: true,
             headers: {
               'Content-Type': 'application/json',
+              ...getInstallHeaders(),
               ...(Cookies.get(CSRF_COOKIE)
                 ? { 'X-CSRF-Token': Cookies.get(CSRF_COOKIE) as string }
                 : {}),

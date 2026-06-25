@@ -36,6 +36,7 @@ export interface MyReport {
 export interface ReportRequest {
   reason: string;
   description?: string;
+  blockUser?: boolean;
 }
 
 export interface ChatReportRequest extends ReportRequest {

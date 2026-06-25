@@ -42,6 +42,7 @@ import {
   Grid3X3,
   Layout,
   Film,
+  Crown,
 } from 'lucide-react';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { GitHubIntegration, MentionsDashboard } from '@/components/settings';
@@ -142,6 +143,14 @@ export default function MorePage() {
       subtext: 'Ask the app-aware assistant',
     },
     {
+      id: 'premium',
+      label: 'Vormex+ Premium',
+      icon: Crown,
+      href: '/premium',
+      color: 'text-blue-500',
+      subtext: 'Premium, Creator Pro, and boosts',
+    },
+    {
       id: 'saved',
       label: 'Saved Posts',
       icon: Bookmark,
@@ -183,6 +192,14 @@ export default function MorePage() {
       icon: Flag,
       href: '/events',
       color: 'text-teal-500',
+    },
+    {
+      id: 'hackathons',
+      label: 'Hackathons',
+      icon: Trophy,
+      href: '/hackathons',
+      color: 'text-amber-500',
+      subtext: 'Find events and form teams',
     },
     {
       id: 'accountability',
@@ -229,9 +246,9 @@ export default function MorePage() {
     },
     {
       id: 'privacy',
-      label: 'Privacy & Security',
+      label: 'Identity & Safety',
       icon: Shield,
-      href: '#',
+      href: '/more/safety',
       color: 'text-red-500',
     },
     {
