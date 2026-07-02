@@ -28,6 +28,7 @@ import { useRewards } from '@/hooks/useRewards';
 import { useVariableRewards } from '@/hooks/useVariableRewards';
 import { RewardCardRenderer } from '@/components/rewards';
 import { NotificationPrompt } from '@/components/notifications';
+import { ManagedAdCard } from '@/components/feed/ManagedAdCard';
 import type { FeedResponse, Post, PollOption } from '@/types/post';
 import { FEED_STALE_TIME, queryKeys } from '@/lib/queryKeys';
 
@@ -46,6 +47,12 @@ export function Feed() {
   const queryClient = useQueryClient();
   const { rewards, dismissReward } = useRewards(user?.id);
   const { activeCards, dismissCard } = useVariableRewards(user?.id);
+  const adSessionIdRef = useRef<string>(
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `web-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+  const adItemOffsetRef = useRef(0);
 
   // Use React Query for feed - cached when navigating back from profile (no reload)
   const {
@@ -59,7 +66,12 @@ export function Feed() {
   } = useInfiniteQuery({
     queryKey: queryKeys.feed(user?.id),
     queryFn: async ({ pageParam }) => {
-      const res = await getFeed(pageParam ?? undefined, 20);
+      const adItemOffset = pageParam ? adItemOffsetRef.current : 0;
+      const res = await getFeed(pageParam ?? undefined, 20, {
+        adSessionId: adSessionIdRef.current,
+        adItemOffset,
+      });
+      adItemOffsetRef.current = adItemOffset + res.posts.length;
       return res;
     },
     initialPageParam: undefined as string | undefined,
@@ -69,6 +81,7 @@ export function Feed() {
   });
 
   const posts = data?.pages.flatMap((p) => p.posts) ?? [];
+  const adPlacements = data?.pages.flatMap((p) => p.adPlacements || []) ?? [];
   const error = queryError ? (queryError as Error).message : null;
   
   // Modal states
@@ -560,6 +573,15 @@ export function Feed() {
                       <WeeklyGoalsWidget />
                     </>
                   )}
+                  {adPlacements
+                    .filter((ad) => ad.afterItemCount === index + 1)
+                    .map((ad) => (
+                      <ManagedAdCard
+                        key={`${ad.campaignId}-${ad.slotKey}`}
+                        ad={ad}
+                        sessionId={adSessionIdRef.current}
+                      />
+                    ))}
                   {/* Variable Reward Cards — injected at dynamic positions */}
                   {activeCards.filter(c => c.position === index + 1).map(card => (
                     <RewardCardRenderer

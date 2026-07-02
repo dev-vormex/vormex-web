@@ -1,4 +1,5 @@
 import type { MusicAttachment } from '@/types/music';
+import type { ManagedAdCreative } from '@/lib/api/managed-ads';
 
 // Post Types - Complete TypeScript definitions for Posts & Feed API
 
@@ -146,6 +147,7 @@ export interface FeedResponse {
   posts: Post[];
   nextCursor: string | null;
   hasMore?: boolean; // Derived from nextCursor if not provided
+  adPlacements?: ManagedAdCreative[];
 }
 
 export interface CommentsResponse {

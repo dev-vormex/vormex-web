@@ -1,4 +1,5 @@
 import apiClient from './client';
+import type { ManagedAdCreative } from './managed-ads';
 
 export interface ReelAuthor {
   id: string;
@@ -76,6 +77,7 @@ export interface ReelsFeedResponse {
   reels: Reel[];
   nextCursor: string | null;
   hasMore: boolean;
+  adPlacements?: ManagedAdCreative[];
 }
 
 export interface ReelComment {
@@ -114,7 +116,7 @@ export interface PreloadDataResponse {
 }
 
 export const reelsApi = {
-  getFeed: (params?: { cursor?: string; limit?: number; mode?: 'foryou' | 'following' }) =>
+  getFeed: (params?: { cursor?: string; limit?: number; mode?: 'foryou' | 'following'; adSessionId?: string; adItemOffset?: number }) =>
     apiClient.get<ReelsFeedResponse>('/reels/feed', { params }),
 
   getFollowingFeed: (params?: { cursor?: string; limit?: number }) =>

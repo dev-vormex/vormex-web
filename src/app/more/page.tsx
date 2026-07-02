@@ -202,6 +202,46 @@ export default function MorePage() {
       subtext: 'Find events and form teams',
     },
     {
+      id: 'skill-passport',
+      label: 'Skill Passport',
+      icon: Award,
+      href: '/skills/passport',
+      color: 'text-emerald-500',
+      subtext: 'Verified proof of your skills',
+    },
+    {
+      id: 'skill-swap',
+      label: 'Skill Swap',
+      icon: Zap,
+      href: '/skill-swap',
+      color: 'text-violet-500',
+      subtext: 'Learn or teach with peers',
+    },
+    {
+      id: 'college-communities',
+      label: 'College Communities',
+      icon: GraduationCap,
+      href: '/college-communities',
+      color: 'text-indigo-500',
+      subtext: 'Join verified campus spaces',
+    },
+    {
+      id: 'talk',
+      label: 'Talk with Vormex',
+      icon: MessageSquare,
+      href: '/talk',
+      color: 'text-sky-500',
+      subtext: 'Find people with AI search',
+    },
+    {
+      id: 'progress',
+      label: 'Progress',
+      icon: Trophy,
+      href: '/progress',
+      color: 'text-orange-500',
+      subtext: 'XP, Coins, levels, and streaks',
+    },
+    {
       id: 'accountability',
       label: 'Grow Together',
       icon: Users,
@@ -513,6 +553,21 @@ export default function MorePage() {
 
               {/* Danger Zone */}
               <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden">
+                <Link
+                  href="/vormex-delete-account"
+                  className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors border-b border-gray-100 dark:border-neutral-800"
+                >
+                  <Trash2 className="w-5 h-5 text-red-500" />
+                  <div className="flex-1 text-left">
+                    <span className="block text-red-600 dark:text-red-400 font-medium">
+                      Delete Account
+                    </span>
+                    <span className="block text-xs text-red-500/80 dark:text-red-400/80 mt-0.5">
+                      Request account and data deletion
+                    </span>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-red-300 dark:text-red-700" />
+                </Link>
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"

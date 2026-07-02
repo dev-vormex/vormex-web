@@ -4,7 +4,9 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { ReelCard } from './ReelCard';
+import { ReelManagedAdCard } from './ReelManagedAdCard';
 import { reelsApi, Reel, ReelsFeedResponse } from '@/lib/api/reels';
+import type { ManagedAdCreative } from '@/lib/api/managed-ads';
 
 interface ReelsFeedProps {
   mode?: 'foryou' | 'following';
@@ -16,6 +18,12 @@ export function ReelsFeed({ mode = 'foryou', initialReels }: ReelsFeedProps) {
   const [isMuted, setIsMuted] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const observerRefs = useRef<Map<string, IntersectionObserver>>(new Map());
+  const adSessionIdRef = useRef<string>(
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `reels-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+  const adItemOffsetRef = useRef(0);
 
   const {
     data,
@@ -27,7 +35,15 @@ export function ReelsFeed({ mode = 'foryou', initialReels }: ReelsFeedProps) {
   } = useInfiniteQuery({
     queryKey: ['reels-feed', mode],
     queryFn: async ({ pageParam }) => {
-      const response = await reelsApi.getFeed({ cursor: pageParam, limit: 10, mode });
+      const adItemOffset = pageParam ? adItemOffsetRef.current : 0;
+      const response = await reelsApi.getFeed({
+        cursor: pageParam,
+        limit: 10,
+        mode,
+        adSessionId: adSessionIdRef.current,
+        adItemOffset,
+      });
+      adItemOffsetRef.current = adItemOffset + (response as unknown as ReelsFeedResponse).reels.length;
       return response as unknown as ReelsFeedResponse;
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor,
@@ -35,16 +51,27 @@ export function ReelsFeed({ mode = 'foryou', initialReels }: ReelsFeedProps) {
     staleTime: 1000 * 60 * 5,
     initialData: initialReels
       ? {
-          pages: [{ reels: initialReels, nextCursor: null, hasMore: false }],
+          pages: [{ reels: initialReels, nextCursor: null, hasMore: false, adPlacements: [] }],
           pageParams: [undefined],
         }
       : undefined,
   });
 
   const reels = data?.pages.flatMap((p) => p.reels) ?? [];
+  const adPlacements = data?.pages.flatMap((p) => p.adPlacements || []) ?? [];
+  const items: Array<{ type: 'reel'; reel: Reel } | { type: 'ad'; ad: ManagedAdCreative }> = [];
+  reels.forEach((reel, index) => {
+    items.push({ type: 'reel', reel });
+    adPlacements
+      .filter((ad) => ad.afterItemCount === index + 1)
+      .forEach((ad) => items.push({ type: 'ad', ad }));
+  });
 
   useEffect(() => {
-    const preloadReels = reels.slice(activeIndex + 1, activeIndex + 4);
+    const preloadReels = items
+      .slice(activeIndex + 1, activeIndex + 4)
+      .filter((item): item is { type: 'reel'; reel: Reel } => item.type === 'reel')
+      .map((item) => item.reel);
     preloadReels.forEach((reel) => {
       if (reel.hlsUrl) {
         fetch(reel.hlsUrl).catch(() => {});
@@ -54,7 +81,7 @@ export function ReelsFeed({ mode = 'foryou', initialReels }: ReelsFeedProps) {
         img.src = reel.thumbnailUrl;
       }
     });
-  }, [activeIndex, reels]);
+  }, [activeIndex, items]);
 
   const handleScroll = useCallback(() => {
     const container = containerRef.current;
@@ -67,11 +94,11 @@ export function ReelsFeed({ mode = 'foryou', initialReels }: ReelsFeedProps) {
     if (newIndex !== activeIndex) {
       setActiveIndex(newIndex);
 
-      if (newIndex >= reels.length - 3 && hasNextPage && !isFetchingNextPage) {
+      if (newIndex >= items.length - 3 && hasNextPage && !isFetchingNextPage) {
         fetchNextPage();
       }
     }
-  }, [activeIndex, reels.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
+  }, [activeIndex, items.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -113,7 +140,7 @@ export function ReelsFeed({ mode = 'foryou', initialReels }: ReelsFeedProps) {
     );
   }
 
-  if (reels.length === 0) {
+  if (items.length === 0) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-black text-white gap-4">
         <p className="text-xl">No reels yet</p>
@@ -128,17 +155,25 @@ export function ReelsFeed({ mode = 'foryou', initialReels }: ReelsFeedProps) {
       className="h-screen w-full snap-y snap-mandatory overflow-y-scroll scrollbar-hide"
       onClick={handleFirstInteraction}
     >
-      {reels.map((reel, index) => (
+      {items.map((item, index) => (
         <div
-          key={reel.id}
+          key={item.type === 'reel' ? item.reel.id : `${item.ad.campaignId}-${item.ad.slotKey}`}
           className="h-screen w-full snap-start snap-always"
         >
-          <ReelCard
-            reel={reel}
-            isActive={index === activeIndex}
-            isMuted={isMuted}
-            onMuteToggle={handleMuteToggle}
-          />
+          {item.type === 'reel' ? (
+            <ReelCard
+              reel={item.reel}
+              isActive={index === activeIndex}
+              isMuted={isMuted}
+              onMuteToggle={handleMuteToggle}
+            />
+          ) : (
+            <ReelManagedAdCard
+              ad={item.ad}
+              isActive={index === activeIndex}
+              sessionId={adSessionIdRef.current}
+            />
+          )}
         </div>
       ))}
 

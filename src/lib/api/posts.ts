@@ -19,9 +19,15 @@ import type {
  * @param cursor - Optional cursor for pagination
  * @param limit - Number of posts per page (default: 20)
  */
-export async function getFeed(cursor?: string, limit: number = 20): Promise<FeedResponse> {
+export async function getFeed(
+  cursor?: string,
+  limit: number = 20,
+  adOptions?: { adSessionId?: string; adItemOffset?: number },
+): Promise<FeedResponse> {
   const params: Record<string, any> = { limit };
   if (cursor) params.cursor = cursor;
+  if (adOptions?.adSessionId) params.adSessionId = adOptions.adSessionId;
+  if (typeof adOptions?.adItemOffset === 'number') params.adItemOffset = adOptions.adItemOffset;
   return apiClient.get('/posts/feed', { params });
 }
 
