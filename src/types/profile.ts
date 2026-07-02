@@ -9,7 +9,7 @@ export interface ProfileUser {
   bannerImageUrl: string | null;
   headline: string | null;
   bio: string | null;
-  location: string | null;
+  location: ProfileLocation;
   college: string;
   degree: string | null;
   branch: string;
@@ -32,6 +32,14 @@ export interface SocialUrl {
   name: string;
   url: string;
 }
+
+export interface LocationParts {
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+}
+
+export type ProfileLocation = string | LocationParts | null;
 
 export interface ProfileStats {
   xp: number;
@@ -155,7 +163,7 @@ export interface Experience {
   title: string;
   company: string;
   type: 'Internship' | 'Part-time' | 'Full-time' | 'Freelance' | 'Contract';
-  location: string | null;
+  location: ProfileLocation;
   startDate: string;
   endDate: string | null;
   isCurrent: boolean;

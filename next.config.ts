@@ -35,6 +35,18 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "api.dicebear.com",
       },
+      {
+        protocol: "https",
+        hostname: "media.hackerearth.com",
+      },
+      {
+        protocol: "https",
+        hostname: "d112y698adiu2z.cloudfront.net",
+      },
+      {
+        protocol: "https",
+        hostname: "assets.devfolio.co",
+      },
     ],
   },
 };

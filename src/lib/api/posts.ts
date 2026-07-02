@@ -8,6 +8,9 @@ import type {
   CommentsResponse,
   MentionUser,
   MentionNotification,
+  PollOption,
+  ReactionType,
+  ReactionSummary,
 } from '@/types/post';
 
 // ============================================
@@ -24,7 +27,7 @@ export async function getFeed(
   limit: number = 20,
   adOptions?: { adSessionId?: string; adItemOffset?: number },
 ): Promise<FeedResponse> {
-  const params: Record<string, any> = { limit };
+  const params: Record<string, string | number> = { limit };
   if (cursor) params.cursor = cursor;
   if (adOptions?.adSessionId) params.adSessionId = adOptions.adSessionId;
   if (typeof adOptions?.adItemOffset === 'number') params.adItemOffset = adOptions.adItemOffset;
@@ -76,12 +79,25 @@ export async function updatePost(
 // Engagement Endpoints
 // ============================================
 
+export interface ToggleLikeResponse {
+  liked: boolean;
+  isLiked: boolean;
+  likesCount: number;
+  reactionType: ReactionType | null;
+  reactionSummary: ReactionSummary[];
+}
+
 /**
- * Toggle like on a post
+ * Toggle/switch a reaction on a post.
+ * Same reaction again removes it; a different reaction switches it.
  * @param postId - Post ID
+ * @param reactionType - Reaction to apply (defaults to LIKE)
  */
-export async function toggleLike(postId: string): Promise<{ liked: boolean; likesCount: number }> {
-  return apiClient.post(`/posts/${postId}/like`);
+export async function toggleLike(
+  postId: string,
+  reactionType: ReactionType = 'LIKE'
+): Promise<ToggleLikeResponse> {
+  return apiClient.post(`/posts/${postId}/like`, { reactionType });
 }
 
 /**
@@ -89,7 +105,7 @@ export async function toggleLike(postId: string): Promise<{ liked: boolean; like
  * @param postId - Post ID
  * @param optionId - Poll option ID
  */
-export async function votePoll(postId: string, optionId: string): Promise<{ success: boolean; pollOptions: any[] }> {
+export async function votePoll(postId: string, optionId: string): Promise<{ success: boolean; pollOptions: PollOption[] }> {
   return apiClient.post(`/posts/${postId}/poll/vote`, { optionId });
 }
 
@@ -131,7 +147,7 @@ export async function getComments(
   page: number = 1,
   limit: number = 20
 ): Promise<CommentsResponse> {
-  const params: Record<string, any> = { page, limit };
+  const params: Record<string, string | number> = { page, limit };
   if (parentId) params.parentId = parentId;
   return apiClient.get(`/posts/${postId}/comments`, { params });
 }
@@ -262,46 +278,4 @@ export async function deleteUpload(fileUrl: string, type: 'avatar' | 'banner' | 
 }
 
 // ============================================
-// Location Endpoints
-// ============================================
-
-/**
- * Update user location
- */
-export async function updateLocation(
-  lat: number,
-  lng: number,
-  accuracy?: number,
-  activity?: string
-): Promise<any> {
-  return apiClient.post('/location/update', { lat, lng, accuracy, activity });
-}
-
-/**
- * Get current user's location
- */
-export async function getMyLocation(): Promise<any> {
-  return apiClient.get('/location/me');
-}
-
-/**
- * Get nearby users
- * @param radius - Search radius in km (default: 50)
- * @param limit - Max users to return (default: 20)
- */
-export async function getNearbyUsers(radius?: number, limit?: number): Promise<any[]> {
-  const params: Record<string, any> = {};
-  if (radius) params.radius = radius;
-  if (limit) params.limit = limit;
-  return apiClient.get('/location/nearby', { params });
-}
-
-/**
- * Update location settings
- */
-export async function updateLocationSettings(settings: {
-  locationPermission?: boolean;
-  shareLocationPublic?: boolean;
-}): Promise<{ message: string }> {
-  return apiClient.put('/location/settings', settings);
-}
+// Location endpoints live in '@/lib/api/location'

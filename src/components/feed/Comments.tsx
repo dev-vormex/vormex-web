@@ -4,7 +4,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
-  Heart,
   MessageCircle,
   ChevronDown,
   ChevronUp,
@@ -59,14 +58,15 @@ function CommentItem({ comment, postId, depth, highlightId, onReply }: CommentIt
   useEffect(() => {
     const socket = getSocket();
     
-    const handleCommentCreated = (data: { postId: string; comment?: any; commentsCount: number }) => {
+    const handleCommentCreated = (data: { postId: string; comment?: Comment; commentsCount: number }) => {
+      const newReply = data.comment;
       // Skip if no comment data or not a reply to this comment
-      if (!data.comment || data.postId !== postId || data.comment.parentId !== comment.id) return;
-      
+      if (!newReply || data.postId !== postId || newReply.parentId !== comment.id) return;
+
       // New reply to this comment
       setReplies(prev => {
-        if (prev.some(r => r.id === data.comment.id)) return prev;
-        return [data.comment, ...prev];
+        if (prev.some(r => r.id === newReply.id)) return prev;
+        return [newReply, ...prev];
       });
       setReplyCount(prev => prev + 1);
       setHasMoreReplies(true);
@@ -132,7 +132,7 @@ function CommentItem({ comment, postId, depth, highlightId, onReply }: CommentIt
         setIsLiked(res.liked);
         setLikesCount(res.likesCount);
       }
-    } catch (error) {
+    } catch {
       setIsLiked(!newLiked);
       setLikesCount(likesCount);
     }
@@ -310,7 +310,6 @@ export function Comments({ postId, isOpen, onClose, highlightCommentId, onCommen
   const [submitError, setSubmitError] = useState<string | null>(null);
   
   // Mention state
-  const [mentionQuery, setMentionQuery] = useState('');
   const [mentionResults, setMentionResults] = useState<MentionUser[]>([]);
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
   const [mentions, setMentions] = useState<string[]>([]);
@@ -326,36 +325,37 @@ export function Comments({ postId, isOpen, onClose, highlightCommentId, onCommen
       // Set up real-time comment listeners
       const socket = getSocket();
       
-      const handleCommentCreated = (data: { postId: string; comment?: any; commentsCount: number }) => {
+      const handleCommentCreated = (data: { postId: string; comment?: Comment; commentsCount: number }) => {
         if (data.postId !== postId) return;
-        
+
         // Update comment count regardless of whether full comment data is present
         if (typeof data.commentsCount === 'number') {
           onCommentCountChange?.(data.commentsCount);
         }
-        
+
         // If no comment data provided (global feed broadcast), just update the count
-        if (!data.comment) return;
-        
+        const newComment = data.comment;
+        if (!newComment) return;
+
         // Add new comment to the list (avoid duplicates)
         setComments(prev => {
           // Check if comment already exists (from optimistic update or duplicate event)
-          const exists = prev.some(c => c.id === data.comment.id);
+          const exists = prev.some(c => c.id === newComment.id);
           const hasTempComment = prev.some(c => c.id.startsWith('temp-'));
-          
+
           if (exists) {
             // Comment already in list, no change needed
             return prev;
           }
-          
+
           if (hasTempComment) {
             // Replace temp comment with real one
-            return prev.map(c => c.id.startsWith('temp-') ? data.comment : c);
+            return prev.map(c => c.id.startsWith('temp-') ? newComment : c);
           }
-          
+
           // Add to top if it's a new top-level comment
-          if (!data.comment.parentId) {
-            return [data.comment, ...prev];
+          if (!newComment.parentId) {
+            return [newComment, ...prev];
           }
           return prev;
         });
@@ -471,7 +471,6 @@ export function Comments({ postId, isOpen, onClose, highlightCommentId, onCommen
       const query = spaceIndex === -1 ? textAfterAt : '';
       
       if (query) {
-        setMentionQuery(query);
         searchMentions(query);
       } else {
         setShowMentionDropdown(false);
@@ -523,7 +522,11 @@ export function Comments({ postId, isOpen, onClose, highlightCommentId, onCommen
         return [comment, ...prev];
       });
       
-      onCommentCountChange?.(comments.length + 1);
+      // Replies don't change the top-level comment count; the socket
+      // 'comment:created' event carries the authoritative count anyway.
+      if (!replyingTo) {
+        onCommentCountChange?.(comments.length + 1);
+      }
       setNewComment('');
       setMentions([]);
       setReplyingTo(null);

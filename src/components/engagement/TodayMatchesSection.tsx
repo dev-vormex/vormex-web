@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserPlus, ChevronRight, ChevronLeft, Check, Loader2, Sparkles, MessageCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { getDailyMatches, type DailyMatch, type DailyMatchesResponse } from '@/lib/api/engagement';
+import { getDailyMatches, type DailyMatch } from '@/lib/api/engagement';
 import { sendConnectionRequest } from '@/lib/api/connections';
 import Link from 'next/link';
 import { TodayMatchesSkeleton } from './TodayMatchesSkeleton';
@@ -16,6 +16,7 @@ import { TodayMatchesSkeleton } from './TodayMatchesSkeleton';
 export default function TodayMatchesSection() {
   const [connectingIds, setConnectingIds] = useState<Set<string>>(new Set());
   const [connectedIds, setConnectedIds] = useState<Set<string>>(new Set());
+  const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -50,11 +51,17 @@ export default function TodayMatchesSection() {
     if (connectingIds.has(userId) || connectedIds.has(userId)) return;
 
     setConnectingIds(prev => new Set([...prev, userId]));
+    setFailedIds(prev => {
+      const next = new Set(prev);
+      next.delete(userId);
+      return next;
+    });
     try {
       await sendConnectionRequest(userId);
       setConnectedIds(prev => new Set([...prev, userId]));
     } catch (error) {
       console.error('Failed to send connection request:', error);
+      setFailedIds(prev => new Set([...prev, userId]));
     } finally {
       setConnectingIds(prev => {
         const next = new Set(prev);
@@ -70,19 +77,21 @@ export default function TodayMatchesSection() {
   return (
     <div className="relative mb-4">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 lg:px-0 mb-3">
+      <div className="flex items-center justify-between px-4 mb-3">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-amber-500" />
+          <span className="w-6 h-6 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+          </span>
           <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Today&apos;s Matches</h3>
-          <span className="text-xs text-gray-400 dark:text-neutral-500">
-            {matchData.matches.length} people
+          <span className="px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-neutral-800 text-[10px] font-medium text-gray-500 dark:text-neutral-400">
+            {matchData.matches.length}
           </span>
         </div>
         <Link
           href="/find-people"
-          className="flex items-center gap-0.5 text-xs text-blue-600 dark:text-blue-400 font-medium hover:underline"
+          className="flex items-center gap-0.5 px-2.5 py-1 rounded-full text-xs text-blue-600 dark:text-blue-400 font-medium hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
         >
-          See all <ChevronRight className="w-3 h-3" />
+          See all <ChevronRight className="w-3.5 h-3.5" />
         </Link>
       </div>
 
@@ -95,7 +104,8 @@ export default function TodayMatchesSection() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => scroll('left')}
-            className="hidden lg:flex absolute left-0 top-1/2 mt-3 z-10 w-8 h-8 items-center justify-center rounded-full bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 shadow-md hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
+            aria-label="Scroll left"
+            className="hidden lg:flex absolute left-2 top-1/2 mt-3 z-10 w-8 h-8 items-center justify-center rounded-full bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 shadow-md hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
           >
             <ChevronLeft className="w-4 h-4 text-gray-600 dark:text-neutral-300" />
           </motion.button>
@@ -107,7 +117,8 @@ export default function TodayMatchesSection() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => scroll('right')}
-            className="hidden lg:flex absolute right-0 top-1/2 mt-3 z-10 w-8 h-8 items-center justify-center rounded-full bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 shadow-md hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
+            aria-label="Scroll right"
+            className="hidden lg:flex absolute right-2 top-1/2 mt-3 z-10 w-8 h-8 items-center justify-center rounded-full bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 shadow-md hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
           >
             <ChevronRight className="w-4 h-4 text-gray-600 dark:text-neutral-300" />
           </motion.button>
@@ -117,7 +128,7 @@ export default function TodayMatchesSection() {
       {/* Horizontal scroll container */}
       <div
         ref={scrollRef}
-        className="flex gap-3 overflow-x-auto scrollbar-hide px-4 lg:px-0 pb-1"
+        className="flex gap-3 overflow-x-auto scrollbar-hide px-4 pb-1"
         style={{ scrollSnapType: 'x mandatory' }}
       >
         {matchData.matches.map((match, i) => (
@@ -127,6 +138,7 @@ export default function TodayMatchesSection() {
             index={i}
             isConnecting={connectingIds.has(match.id)}
             isConnected={connectedIds.has(match.id)}
+            hasFailed={failedIds.has(match.id)}
             onConnect={handleConnect}
           />
         ))}
@@ -140,39 +152,45 @@ function MatchCard({
   index,
   isConnecting,
   isConnected,
+  hasFailed,
   onConnect,
 }: {
   match: DailyMatch;
   index: number;
   isConnecting: boolean;
   isConnected: boolean;
+  hasFailed: boolean;
   onConnect: (e: React.MouseEvent, userId: string) => void;
 }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.05 }}
-      className="flex-shrink-0 w-[200px] bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden hover:shadow-md transition-shadow"
+      transition={{ delay: index * 0.04 }}
+      className="flex-shrink-0 w-[200px] bg-white dark:bg-neutral-900 rounded-2xl border border-gray-100 dark:border-neutral-800 overflow-hidden hover:shadow-md hover:border-gray-200 dark:hover:border-neutral-700 hover:-translate-y-0.5 transition-all"
       style={{ scrollSnapAlign: 'start' }}
     >
       <Link href={`/profile/${match.username}`} className="block">
         {/* Avatar + Online indicator */}
         <div className="relative flex justify-center pt-4 pb-2">
           <div className="relative">
-            {match.profileImage ? (
-              <img
-                src={match.profileImage}
-                alt={match.name}
-                className="w-16 h-16 rounded-full object-cover border-2 border-white dark:border-neutral-800 shadow-sm"
-              />
-            ) : (
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 flex items-center justify-center text-xl font-bold text-blue-600 dark:text-blue-400 border-2 border-white dark:border-neutral-800 shadow-sm">
-                {match.name.charAt(0)}
+            <div className="w-[68px] h-[68px] rounded-full p-[2px] bg-gradient-to-br from-amber-400 to-orange-500">
+              <div className="w-full h-full rounded-full border-2 border-white dark:border-neutral-900 overflow-hidden bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
+                {match.profileImage ? (
+                  <img
+                    src={match.profileImage}
+                    alt={match.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-xl font-bold text-gray-400">
+                    {match.name.charAt(0).toUpperCase()}
+                  </span>
+                )}
               </div>
-            )}
+            </div>
             {match.isOnline && (
-              <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-neutral-900 rounded-full" />
+              <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-neutral-900 rounded-full" />
             )}
           </div>
         </div>
@@ -225,7 +243,7 @@ function MatchCard({
       {/* Connect button */}
       <div className="px-3 pb-3">
         {isConnected ? (
-          <div className="flex items-center justify-center gap-1.5 w-full py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-xs font-medium rounded-lg">
+          <div className="flex items-center justify-center gap-1.5 w-full py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-xs font-semibold rounded-full">
             <Check className="w-3 h-3" />
             Request Sent
           </div>
@@ -233,14 +251,18 @@ function MatchCard({
           <button
             onClick={(e) => onConnect(e, match.id)}
             disabled={isConnecting}
-            className="flex items-center justify-center gap-1.5 w-full py-2 border border-blue-500 text-blue-600 dark:text-blue-400 text-xs font-medium rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-50"
+            className={`flex items-center justify-center gap-1.5 w-full py-2 text-xs font-semibold rounded-full transition-colors disabled:opacity-60 ${
+              hasFailed
+                ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30'
+                : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
+            }`}
           >
             {isConnecting ? (
               <Loader2 className="w-3 h-3 animate-spin" />
             ) : (
               <UserPlus className="w-3 h-3" />
             )}
-            Connect
+            {hasFailed ? 'Failed — tap to retry' : 'Connect'}
           </button>
         )}
       </div>

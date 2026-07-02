@@ -33,6 +33,12 @@ import type { FeedResponse, Post, PollOption } from '@/types/post';
 import { FEED_STALE_TIME, queryKeys } from '@/lib/queryKeys';
 
 type FeedCache = InfiniteData<FeedResponse, string | undefined>;
+
+function createAdSessionId(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 type FeedSocketReactionPayload = {
   postId: string;
   userId: string;
@@ -47,11 +53,7 @@ export function Feed() {
   const queryClient = useQueryClient();
   const { rewards, dismissReward } = useRewards(user?.id);
   const { activeCards, dismissCard } = useVariableRewards(user?.id);
-  const adSessionIdRef = useRef<string>(
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID()
-      : `web-${Date.now()}-${Math.random().toString(36).slice(2)}`
-  );
+  const [adSessionId] = useState(createAdSessionId);
   const adItemOffsetRef = useRef(0);
 
   // Use React Query for feed - cached when navigating back from profile (no reload)
@@ -68,7 +70,7 @@ export function Feed() {
     queryFn: async ({ pageParam }) => {
       const adItemOffset = pageParam ? adItemOffsetRef.current : 0;
       const res = await getFeed(pageParam ?? undefined, 20, {
-        adSessionId: adSessionIdRef.current,
+        adSessionId,
         adItemOffset,
       });
       adItemOffsetRef.current = adItemOffset + res.posts.length;
@@ -230,11 +232,7 @@ export function Feed() {
     };
     
     // Initialize socket connection
-    initializeSocket({
-      onConnect: () => {
-        console.log('Feed: Socket connected');
-      },
-    });
+    initializeSocket();
 
     joinFeedRoom();
     
@@ -428,9 +426,7 @@ export function Feed() {
           <div className="border-t border-gray-200/80 dark:border-neutral-800/80">
             <DailyHooksWidget />
             <RecommendedPeople />
-            <div className="pb-4">
-              <TodayMatchesSection />
-            </div>
+            <TodayMatchesSection />
           </div>
         </motion.section>
       )}
@@ -579,7 +575,7 @@ export function Feed() {
                       <ManagedAdCard
                         key={`${ad.campaignId}-${ad.slotKey}`}
                         ad={ad}
-                        sessionId={adSessionIdRef.current}
+                        sessionId={adSessionId}
                       />
                     ))}
                   {/* Variable Reward Cards — injected at dynamic positions */}

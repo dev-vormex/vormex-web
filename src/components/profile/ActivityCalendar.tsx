@@ -186,7 +186,7 @@ export function ActivityCalendar({
   }, [weeks, activityData]);
 
   return (
-    <Card className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-gray-200 dark:border-neutral-800">
+    <Card className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm hover:shadow-lg hover:shadow-neutral-900/5 dark:hover:shadow-black/30 transition-shadow duration-300 border border-neutral-200/80 dark:border-neutral-800">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
         <div className="flex items-center gap-2">

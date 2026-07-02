@@ -5,19 +5,19 @@ import { motion, AnimatePresence } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   Award,
-  Plus,
   ExternalLink,
   Calendar,
-  CheckCircle,
-  AlertCircle,
   Edit2,
   X,
   Building,
-  Hash,
   Eye,
 } from 'lucide-react';
-import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
+import {
+  ProfileSection,
+  RevealItem,
+  SectionAddButton,
+  SectionEmptyState,
+} from './ProfileSection';
 import type { Certificate } from '@/types/profile';
 
 interface CertificatesGridProps {
@@ -60,14 +60,6 @@ export function CertificatesGrid({
     return new Date(cert.expiryDate) < new Date();
   };
 
-  const isExpiringSoon = (cert: Certificate) => {
-    if (cert.doesNotExpire || !cert.expiryDate) return false;
-    const expiry = new Date(cert.expiryDate);
-    const threeMonthsFromNow = new Date();
-    threeMonthsFromNow.setMonth(threeMonthsFromNow.getMonth() + 3);
-    return expiry > new Date() && expiry <= threeMonthsFromNow;
-  };
-
   // Check if URL is an image
   const isImageUrl = (url: string) => {
     const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
@@ -78,93 +70,68 @@ export function CertificatesGrid({
   };
 
   return (
-    <Card className="bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-none overflow-hidden">
-      {/* Header */}
-      <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-lg font-bold tracking-tight text-neutral-900 dark:text-white uppercase flex items-center gap-2">
-          <Award className="w-4 h-4" />
-          Licenses & Certifications
-          <span className="text-xs font-medium text-neutral-500 ml-2">
-            ({certificates.length})
-          </span>
-        </h2>
-
-        {isOwner && onAddCertificate && (
-          <button
-            onClick={onAddCertificate}
-            className="text-xs font-bold uppercase tracking-wider text-neutral-900 dark:text-white hover:underline flex items-center gap-1"
-          >
-            <Plus className="w-3 h-3" />
-            Add New
-          </button>
-        )}
-      </div>
-
-      <div className="p-6">
-        {certificates.length === 0 ? (
-          <div className="text-center py-12 border border-dashed border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50">
-            <div className="w-12 h-12 mx-auto mb-4 bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 flex items-center justify-center">
-              <Award className="w-5 h-5 text-neutral-400" />
-            </div>
-            <p className="text-sm text-neutral-500 font-medium mb-4">No certifications added yet.</p>
-            {isOwner && onAddCertificate && (
-              <Button
-                onClick={onAddCertificate}
-                className="bg-black dark:bg-white text-white dark:text-black rounded-none text-xs font-bold uppercase tracking-wider px-6 py-3"
-              >
-                Add Your First Certification
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {certificates.map((cert, index) => (
-              <motion.div
-                key={cert.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="group relative bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 p-5 hover:border-black dark:hover:border-white transition-colors"
-              >
+    <ProfileSection
+      icon={<Award className="w-5 h-5" />}
+      title="Licenses & Certifications"
+      count={certificates.length}
+      action={
+        isOwner && onAddCertificate ? (
+          <SectionAddButton onClick={onAddCertificate} label="Add Certificate" />
+        ) : undefined
+      }
+    >
+      {certificates.length === 0 ? (
+        <SectionEmptyState
+          icon={<Award className="w-5 h-5" />}
+          message="No certifications added yet."
+          actionLabel={isOwner && onAddCertificate ? 'Add Your First Certification' : undefined}
+          onAction={isOwner && onAddCertificate ? onAddCertificate : undefined}
+        />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {certificates.map((cert, index) => (
+            <RevealItem key={cert.id} index={index}>
+              <div className="group relative h-full rounded-2xl bg-white dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 p-5 hover:border-blue-200 dark:hover:border-blue-500/40 hover:shadow-lg hover:shadow-neutral-900/5 dark:hover:shadow-black/30 hover:-translate-y-0.5 transition-all duration-300">
                 <div className="flex gap-4">
                   {/* Icon */}
                   <div
-                    className="w-12 h-12 shrink-0 flex items-center justify-center border border-neutral-200 dark:border-neutral-800"
-                    style={{ backgroundColor: cert.color || '#525252' }}
+                    className="w-12 h-12 shrink-0 rounded-xl flex items-center justify-center shadow-sm"
+                    style={{ backgroundColor: cert.color || '#2563eb' }}
                   >
                     <Award className="w-6 h-6 text-white" />
                   </div>
 
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-bold text-neutral-900 dark:text-white uppercase tracking-wide truncate mb-1">
+                  <div className="flex-1 min-w-0 pr-14">
+                    <h4 className="text-sm font-semibold text-neutral-900 dark:text-white truncate mb-0.5">
                       {cert.name}
                     </h4>
-                    <p className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-3">
+                    <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3">
                       {cert.issuingOrg}
                     </p>
 
-                    <div className="flex flex-wrap gap-x-4 gap-y-2 text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-neutral-400 dark:text-neutral-500">
                       <div className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
+                        <Calendar className="w-3.5 h-3.5" />
                         {formatDate(cert.issueDate)}
                       </div>
                       {isExpired(cert) ? (
-                        <span className="text-red-500">Expired</span>
+                        <span className="px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-500/10 text-[11px] font-semibold text-red-600 dark:text-red-400">Expired</span>
                       ) : cert.doesNotExpire ? (
-                        <span className="text-emerald-500">No Expiration</span>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">No Expiration</span>
                       ) : cert.expiryDate && (
-                        <span>Exp: {formatDate(cert.expiryDate)}</span>
+                        <span>Expires {formatDate(cert.expiryDate)}</span>
                       )}
                     </div>
                   </div>
                 </div>
 
                 {/* Actions */}
-                <div className="absolute top-4 right-4 flex gap-2">
+                <div className="absolute top-4 right-4 flex gap-1">
                   {cert.credentialUrl && (
                     <button
                       onClick={() => setSelectedCertificate(cert)}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 text-neutral-400 hover:text-black dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-all"
+                      className="opacity-0 group-hover:opacity-100 p-2 rounded-full text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all"
+                      title="View certificate"
                     >
                       <Eye className="w-3.5 h-3.5" />
                     </button>
@@ -172,17 +139,18 @@ export function CertificatesGrid({
                   {isOwner && onEditCertificate && (
                     <button
                       onClick={() => onEditCertificate(cert)}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 text-neutral-400 hover:text-black dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-all"
+                      className="opacity-0 group-hover:opacity-100 p-2 rounded-full text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all"
+                      title="Edit certificate"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
-              </motion.div>
-            ))}
-          </div>
-        )}
-      </div>
+              </div>
+            </RevealItem>
+          ))}
+        </div>
+      )}
 
       {/* Certificate View Modal */}
       <Dialog.Root open={!!selectedCertificate} onOpenChange={(open) => !open && setSelectedCertificate(null)}>
@@ -194,27 +162,30 @@ export function CertificatesGrid({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm z-50 transition-opacity"
+                  className="fixed inset-0 bg-neutral-950/70 backdrop-blur-sm z-50 transition-opacity"
                 />
               </Dialog.Overlay>
               <Dialog.Content asChild>
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.98, y: 10 }}
+                  initial={{ opacity: 0, scale: 0.97, y: 12 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.98, y: 10 }}
+                  exit={{ opacity: 0, scale: 0.97, y: 12 }}
                   transition={{ duration: 0.2 }}
-                  className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-white dark:bg-black rounded-none shadow-2xl z-50 border border-neutral-200 dark:border-neutral-800"
+                  className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl z-50 border border-neutral-200 dark:border-neutral-800"
                 >
                   {/* Header */}
-                  <div className="p-6 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
-                    <Dialog.Title className="text-xl font-bold tracking-tight text-neutral-900 dark:text-white uppercase flex items-center gap-2">
-                      <div style={{ color: selectedCertificate.color || '#525252' }}>
-                        <Award className="w-5 h-5" />
+                  <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
+                    <Dialog.Title className="text-lg font-semibold tracking-tight text-neutral-900 dark:text-white flex items-center gap-3">
+                      <div
+                        className="w-9 h-9 rounded-xl flex items-center justify-center"
+                        style={{ backgroundColor: selectedCertificate.color || '#2563eb' }}
+                      >
+                        <Award className="w-5 h-5 text-white" />
                       </div>
                       Certificate Details
                     </Dialog.Title>
                     <Dialog.Close asChild>
-                      <button className="text-neutral-400 hover:text-black dark:hover:text-white transition-colors">
+                      <button className="p-2 rounded-full text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
                         <X className="w-5 h-5" />
                       </button>
                     </Dialog.Close>
@@ -224,20 +195,20 @@ export function CertificatesGrid({
                   <div className="p-6">
                     {/* Certificate Image */}
                     {selectedCertificate.credentialUrl && isImageUrl(selectedCertificate.credentialUrl) ? (
-                      <div className="mb-6 border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-2">
+                      <div className="mb-6 rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800 p-2">
                         <img
                           src={selectedCertificate.credentialUrl}
                           alt={`${selectedCertificate.name} certificate`}
-                          className="w-full h-auto object-contain max-h-[50vh]"
+                          className="w-full h-auto object-contain max-h-[50vh] rounded-lg"
                         />
                       </div>
                     ) : selectedCertificate.credentialUrl && (
-                      <div className="mb-6 p-4 border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900">
+                      <div className="mb-6 p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800">
                         <a
                           href={selectedCertificate.credentialUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-black dark:text-white hover:underline"
+                          className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline"
                         >
                           <ExternalLink className="w-4 h-4" />
                           Open Certificate Link
@@ -247,35 +218,34 @@ export function CertificatesGrid({
 
                     {/* Certificate Details */}
                     <div>
-                      <h3 className="text-2xl font-bold text-neutral-900 dark:text-white uppercase tracking-tight mb-2">
+                      <h3 className="text-2xl font-bold text-neutral-900 dark:text-white tracking-tight mb-2">
                         {selectedCertificate.name}
                       </h3>
 
-                      <div className="flex items-center gap-2 text-neutral-500 mb-6">
+                      <div className="flex items-center gap-2 text-neutral-500 dark:text-neutral-400 mb-6">
                         <Building className="w-4 h-4" />
-                        <span className="text-sm font-bold uppercase tracking-wider">{selectedCertificate.issuingOrg}</span>
+                        <span className="text-sm font-medium">{selectedCertificate.issuingOrg}</span>
                       </div>
 
                       <div className="grid grid-cols-2 gap-4 mb-6">
-                        <div className="p-4 border border-neutral-200 dark:border-neutral-800">
-                          <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Issue Date</div>
-                          <div className="text-sm font-bold text-neutral-900 dark:text-white uppercase">
+                        <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-100 dark:border-neutral-800">
+                          <div className="text-xs font-medium text-neutral-400 dark:text-neutral-500 mb-1">Issue Date</div>
+                          <div className="text-sm font-semibold text-neutral-900 dark:text-white">
                             {formatFullDate(selectedCertificate.issueDate)}
                           </div>
                         </div>
-                        <div className="p-4 border border-neutral-200 dark:border-neutral-800">
-                          <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Expiry Date</div>
-                          <div className={`text-sm font-bold uppercase ${isExpired(selectedCertificate) ? 'text-red-500' : 'text-neutral-900 dark:text-white'
-                            }`}>
+                        <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-100 dark:border-neutral-800">
+                          <div className="text-xs font-medium text-neutral-400 dark:text-neutral-500 mb-1">Expiry Date</div>
+                          <div className={`text-sm font-semibold ${isExpired(selectedCertificate) ? 'text-red-500' : 'text-neutral-900 dark:text-white'}`}>
                             {selectedCertificate.doesNotExpire ? 'No Expiration' : selectedCertificate.expiryDate ? formatFullDate(selectedCertificate.expiryDate) : 'N/A'}
                           </div>
                         </div>
                       </div>
 
                       {selectedCertificate.credentialId && (
-                        <div className="p-4 border border-neutral-200 dark:border-neutral-800 flex justify-between items-center">
-                          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Credential ID</span>
-                          <span className="font-mono text-xs font-bold">{selectedCertificate.credentialId}</span>
+                        <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-100 dark:border-neutral-800 flex justify-between items-center">
+                          <span className="text-xs font-medium text-neutral-400 dark:text-neutral-500">Credential ID</span>
+                          <span className="font-mono text-xs font-semibold text-neutral-900 dark:text-white">{selectedCertificate.credentialId}</span>
                         </div>
                       )}
                     </div>
@@ -286,6 +256,6 @@ export function CertificatesGrid({
           )}
         </AnimatePresence>
       </Dialog.Root>
-    </Card>
+    </ProfileSection>
   );
 }

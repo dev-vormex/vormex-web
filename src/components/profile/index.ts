@@ -14,4 +14,5 @@ export { ProfileFeed } from './ProfileFeed';
 export { EditProfileModal } from './EditProfileModal';
 export { ProfileSkeleton } from './ProfileSkeleton';
 export { ProfilePage } from './ProfilePage';
+export { ProfileSection, Reveal, RevealItem, SectionAddButton, SectionEmptyState } from './ProfileSection';
 

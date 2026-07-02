@@ -11,14 +11,26 @@ import {
   type Message,
 } from '@/lib/api/chat';
 import { initializeSocket } from '@/lib/socket';
-import { formatDistanceToNow } from 'date-fns';
+import { format, isToday, isThisWeek, isThisYear } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { queryKeys } from '@/lib/queryKeys';
+import {
+  Check,
+  CheckCheck,
+  Image as ImageIcon,
+  Paperclip,
+  Mic,
+  Film,
+  FileText,
+  MessageCircle,
+} from 'lucide-react';
+import Link from 'next/link';
 
 interface ChatListProps {
   selectedConversationId?: string;
   onSelectConversation?: (conversation: Conversation) => void;
   currentUserId?: string;
+  searchQuery?: string;
 }
 
 type ConversationPreviewMessage = Pick<
@@ -83,10 +95,58 @@ function buildInstantConversationFromMessage(
   };
 }
 
-export default function ChatList({ 
-  selectedConversationId, 
+// Compact LinkedIn-style timestamp: 2:34 PM / Tue / Mar 4 / Mar 4, 2024
+function formatConversationTime(dateString: string): string {
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return '';
+  if (isToday(date)) return format(date, 'h:mm a');
+  if (isThisWeek(date, { weekStartsOn: 1 })) return format(date, 'EEE');
+  if (isThisYear(date)) return format(date, 'MMM d');
+  return format(date, 'MMM d, yyyy');
+}
+
+type PreviewInfo = {
+  text: string;
+  Icon?: React.ComponentType<{ className?: string }>;
+};
+
+// Human-readable preview for the last message; also handles structured
+// payloads (e.g. shared posts) that were stored as JSON strings.
+function getMessagePreview(lastMessage: NonNullable<Conversation['lastMessage']>): PreviewInfo {
+  switch (lastMessage.contentType) {
+    case 'image':
+      return { text: 'Photo', Icon: ImageIcon };
+    case 'file':
+      return { text: 'Attachment', Icon: Paperclip };
+    case 'voice':
+      return { text: 'Voice message', Icon: Mic };
+    case 'reel':
+    case 'video':
+      return { text: 'Video', Icon: Film };
+    case 'post':
+    case 'application/x-shared-post':
+      return { text: 'Shared a post', Icon: FileText };
+  }
+
+  const content = lastMessage.content?.trim() ?? '';
+  if (content.startsWith('{')) {
+    try {
+      const data = JSON.parse(content);
+      if (data?.type === 'shared_post') return { text: 'Shared a post', Icon: FileText };
+      if (data?.type === 'shared_reel' || data?.reelId) return { text: 'Video', Icon: Film };
+    } catch {
+      // Not JSON — fall through to raw content
+    }
+  }
+
+  return { text: content };
+}
+
+export default function ChatList({
+  selectedConversationId,
   onSelectConversation,
-  currentUserId 
+  currentUserId,
+  searchQuery,
 }: ChatListProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -367,21 +427,40 @@ export default function ChatList({
     }
   };
 
+  const normalizedSearch = searchQuery?.trim().toLowerCase() ?? '';
+  const visibleConversations = normalizedSearch
+    ? conversations.filter((conversation) => {
+        const other = conversation.otherParticipant;
+        return (
+          other?.name?.toLowerCase().includes(normalizedSearch) ||
+          other?.username?.toLowerCase().includes(normalizedSearch)
+        );
+      })
+    : conversations;
+
   if (loading && conversations.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="px-2 py-2 space-y-1">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 px-3 py-2.5 animate-pulse">
+            <div className="w-12 h-12 rounded-full bg-gray-200 dark:bg-neutral-800 shrink-0" />
+            <div className="flex-1 min-w-0 space-y-2">
+              <div className="h-3.5 w-1/2 bg-gray-200 dark:bg-neutral-800 rounded" />
+              <div className="h-3 w-3/4 bg-gray-200 dark:bg-neutral-800 rounded" />
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-4 text-center text-red-500">
-        {error}
-        <button 
+      <div className="p-6 text-center">
+        <p className="text-sm text-red-500">{error}</p>
+        <button
           onClick={() => fetchConversations()}
-          className="block mx-auto mt-2 text-blue-500 hover:underline"
+          className="mt-3 px-5 py-1.5 rounded-full border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400 text-sm font-semibold hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
         >
           Retry
         </button>
@@ -391,32 +470,48 @@ export default function ChatList({
 
   if (conversations.length === 0) {
     return (
-      <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-        <div className="text-4xl mb-4">💬</div>
-        <p>No conversations yet</p>
-        <p className="text-sm mt-2">Start a chat with someone!</p>
+      <div className="p-8 text-center">
+        <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
+          <MessageCircle className="w-7 h-7 text-gray-400 dark:text-neutral-500" />
+        </div>
+        <p className="font-semibold text-gray-900 dark:text-white">No conversations yet</p>
+        <p className="text-sm mt-1 text-gray-500 dark:text-neutral-400">
+          Connect with people to start messaging.
+        </p>
+        <Link
+          href="/find-people"
+          className="mt-4 inline-flex px-5 py-1.5 rounded-full border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400 text-sm font-semibold hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
+        >
+          Find people
+        </Link>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-        {conversations.map((conversation) => (
-          <ConversationItem
-            key={conversation.id}
-            conversation={conversation}
-            isSelected={selectedConversationId === conversation.id}
-            currentUserId={currentUserId}
-          onClick={() => handleSelectConversation(conversation)}
-        />
-      ))}
-        
-        {hasMore && (
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-2 py-2 pb-24 md:pb-4">
+        {visibleConversations.length === 0 ? (
+          <p className="p-6 text-center text-sm text-gray-500 dark:text-neutral-400">
+            No conversations match &ldquo;{searchQuery?.trim()}&rdquo;
+          </p>
+        ) : (
+          visibleConversations.map((conversation) => (
+            <ConversationItem
+              key={conversation.id}
+              conversation={conversation}
+              isSelected={selectedConversationId === conversation.id}
+              currentUserId={currentUserId}
+              onClick={() => handleSelectConversation(conversation)}
+            />
+          ))
+        )}
+
+        {hasMore && !normalizedSearch && (
           <button
             onClick={loadMore}
             disabled={loading}
-            className="w-full py-3 text-sm text-blue-600 hover:bg-gray-50 dark:hover:bg-gray-800"
+            className="w-full py-3 text-sm font-semibold text-blue-600 dark:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
           >
             {loading ? 'Loading...' : 'Load more'}
           </button>
@@ -436,31 +531,31 @@ interface ConversationItemProps {
   onClick: () => void;
 }
 
-function ConversationItem({ 
-  conversation, 
-  isSelected, 
+function ConversationItem({
+  conversation,
+  isSelected,
   currentUserId,
-  onClick 
+  onClick
 }: ConversationItemProps) {
   const other = conversation.otherParticipant;
   const lastMessage = conversation.lastMessage;
   const isUnread = conversation.unreadCount > 0;
   const isSentByMe = lastMessage?.senderId === currentUserId;
+  const preview = lastMessage ? getMessagePreview(lastMessage) : null;
 
   return (
-    <div
+    <button
       onClick={onClick}
       className={cn(
-        'flex items-center gap-3 p-3 cursor-pointer transition-colors border-b border-gray-100 dark:border-gray-800',
-        isSelected 
-          ? 'bg-blue-50 dark:bg-blue-900/20' 
-          : 'hover:bg-gray-50 dark:hover:bg-gray-800/50',
-        isUnread && !isSelected && 'bg-gray-50 dark:bg-gray-800/30'
+        'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer text-left transition-colors',
+        isSelected
+          ? 'bg-blue-50 dark:bg-blue-950/40'
+          : 'hover:bg-gray-100 dark:hover:bg-neutral-800/70'
       )}
     >
       {/* Avatar */}
       <div className="relative flex-shrink-0">
-        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold">
+        <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-950/60 flex items-center justify-center text-blue-700 dark:text-blue-300 font-semibold overflow-hidden">
           {other.profileImage ? (
             <img
               src={other.profileImage}
@@ -473,63 +568,67 @@ function ConversationItem({
         </div>
         {/* Online indicator */}
         {other.isOnline && (
-          <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
+          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full ring-2 ring-white dark:ring-neutral-900"></div>
         )}
       </div>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between">
+        <div className="flex items-baseline justify-between gap-2">
           <span className={cn(
-            'font-medium truncate',
-            isUnread && 'text-gray-900 dark:text-white font-semibold'
+            'text-sm truncate text-gray-900 dark:text-white',
+            isUnread ? 'font-bold' : 'font-semibold'
           )}>
             {other.name}
           </span>
           {lastMessage && (
-            <span className="text-xs text-gray-500 flex-shrink-0">
-              {formatDistanceToNow(new Date(lastMessage.createdAt), { addSuffix: false })}
+            <span className={cn(
+              'text-xs flex-shrink-0',
+              isUnread ? 'text-blue-600 dark:text-blue-400 font-semibold' : 'text-gray-400 dark:text-neutral-500'
+            )}>
+              {formatConversationTime(lastMessage.createdAt)}
             </span>
           )}
         </div>
-        
-        <div className="flex items-center gap-1">
-          {lastMessage ? (
+
+        <div className="mt-0.5 flex items-center gap-1.5">
+          {lastMessage && preview ? (
             <>
-              {isSentByMe && (
-                <span className="text-gray-400 text-sm">
-                  {lastMessage.status === 'READ' ? '✓✓' : lastMessage.status === 'DELIVERED' ? '✓✓' : '✓'}
-                </span>
+              {isSentByMe &&
+                (lastMessage.status === 'READ' ? (
+                  <CheckCheck className="w-3.5 h-3.5 shrink-0 text-blue-500" />
+                ) : lastMessage.status === 'DELIVERED' ? (
+                  <CheckCheck className="w-3.5 h-3.5 shrink-0 text-gray-400" />
+                ) : (
+                  <Check className="w-3.5 h-3.5 shrink-0 text-gray-400" />
+                ))}
+              {preview.Icon && (
+                <preview.Icon className="w-3.5 h-3.5 shrink-0 text-gray-400 dark:text-neutral-500" />
               )}
               <p className={cn(
                 'text-sm truncate',
-                isUnread 
-                  ? 'text-gray-900 dark:text-white font-medium' 
-                  : 'text-gray-500 dark:text-gray-400'
+                isUnread
+                  ? 'text-gray-900 dark:text-white font-medium'
+                  : 'text-gray-500 dark:text-neutral-400'
               )}>
-                {lastMessage.contentType === 'image' ? '📷 Photo' :
-                 lastMessage.contentType === 'file' ? '📎 File' :
-                 lastMessage.contentType === 'voice' ? '🎤 Voice message' :
-                 lastMessage.contentType === 'post' ? '📄 Shared a post' :
-                 lastMessage.contentType === 'reel' ? '🎬 Reel' :
-                 lastMessage.contentType === 'video' ? '🎬 Video' :
-                 lastMessage.content}
+                {isSentByMe && 'You: '}
+                {preview.text}
               </p>
             </>
           ) : (
-            <p className="text-sm text-gray-400 italic">No messages yet</p>
+            <p className="text-sm text-gray-400 dark:text-neutral-500 italic">No messages yet</p>
           )}
         </div>
       </div>
 
       {/* Unread badge */}
       {isUnread && (
-        <div className="flex-shrink-0 w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
-          <span className="text-xs text-white font-medium">
+        <div className="flex-shrink-0 min-w-[20px] h-5 px-1.5 bg-blue-600 rounded-full flex items-center justify-center">
+          <span className="text-[11px] text-white font-bold">
             {conversation.unreadCount > 9 ? '9+' : conversation.unreadCount}
           </span>
         </div>
       )}
-    </div>
+    </button>
   );
 }

@@ -6,12 +6,12 @@ import Link from 'next/link';
 import ConnectionSentToast from '@/components/engagement/ConnectionSentToast';
 import {
   GraduationCap,
+  Users,
   Loader2,
   UserPlus,
   UserCheck,
   Clock,
   Check,
-  X,
 } from 'lucide-react';
 import type { PersonCard as PersonCardType } from '@/lib/api/people';
 import {
@@ -77,9 +77,9 @@ export function PersonCard({ person, onConnectionChange, badgeLabel }: PersonCar
   const handleConnect = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (loading) return;
-    
+
     setLoading(true);
     try {
       const result = await sendConnectionRequest(person.id);
@@ -97,9 +97,9 @@ export function PersonCard({ person, onConnectionChange, badgeLabel }: PersonCar
   const handleAccept = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (loading) return;
-    
+
     setLoading(true);
     try {
       const resolvedConnectionId = await resolveConnectionId();
@@ -117,9 +117,9 @@ export function PersonCard({ person, onConnectionChange, badgeLabel }: PersonCar
   const handleReject = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (loading) return;
-    
+
     setLoading(true);
     try {
       const resolvedConnectionId = await resolveConnectionId();
@@ -137,9 +137,9 @@ export function PersonCard({ person, onConnectionChange, badgeLabel }: PersonCar
   const handleCancelRequest = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (loading) return;
-    
+
     setLoading(true);
     try {
       const resolvedConnectionId = await resolveConnectionId();
@@ -159,7 +159,7 @@ export function PersonCard({ person, onConnectionChange, badgeLabel }: PersonCar
       return (
         <button
           disabled
-          className="flex items-center gap-2 px-4 py-2 rounded-full bg-gray-100 dark:bg-neutral-800 text-gray-400"
+          className="w-full flex items-center justify-center gap-2 py-1.5 rounded-full border border-gray-300 dark:border-neutral-700 text-gray-400 text-sm font-semibold"
         >
           <Loader2 className="w-4 h-4 animate-spin" />
         </button>
@@ -171,48 +171,49 @@ export function PersonCard({ person, onConnectionChange, badgeLabel }: PersonCar
         return (
           <button
             disabled
-            className="flex items-center gap-2 px-4 py-2 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-sm font-medium"
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-full border border-gray-200 dark:border-neutral-800 bg-gray-50 dark:bg-neutral-800/60 text-gray-500 dark:text-neutral-400 text-sm font-semibold"
           >
             <UserCheck className="w-4 h-4" />
             Connected
           </button>
         );
-      
+
       case 'pending_sent':
         return (
           <button
             onClick={handleCancelRequest}
-            className="flex items-center gap-2 px-4 py-2 rounded-full bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400 text-sm font-medium hover:bg-gray-200 dark:hover:bg-neutral-700 transition-colors"
+            title="Withdraw request"
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-full border border-gray-400 dark:border-neutral-600 text-gray-600 dark:text-neutral-300 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-neutral-800 hover:border-gray-500 transition-colors"
           >
             <Clock className="w-4 h-4" />
             Pending
           </button>
         );
-      
+
       case 'pending_received':
         return (
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center gap-2">
             <button
               onClick={handleAccept}
-              className="flex items-center gap-1 px-3 py-2 rounded-full bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors"
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-full bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
             >
               <Check className="w-4 h-4" />
               Accept
             </button>
             <button
               onClick={handleReject}
-              className="flex items-center gap-1 px-3 py-2 rounded-full bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400 text-sm font-medium hover:bg-gray-200 dark:hover:bg-neutral-700 transition-colors"
+              className="flex-1 py-1.5 rounded-full border border-gray-300 dark:border-neutral-700 text-gray-600 dark:text-neutral-400 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
             >
-              <X className="w-4 h-4" />
+              Ignore
             </button>
           </div>
         );
-      
+
       default:
         return (
           <button
             onClick={handleConnect}
-            className="flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-full border border-blue-600 dark:border-blue-400 text-blue-600 dark:text-blue-400 text-sm font-semibold hover:bg-blue-50 dark:hover:bg-blue-950/40 hover:shadow-[inset_0_0_0_1px_currentColor] transition-all"
           >
             <UserPlus className="w-4 h-4" />
             Connect
@@ -223,12 +224,12 @@ export function PersonCard({ person, onConnectionChange, badgeLabel }: PersonCar
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden hover:border-gray-300 dark:hover:border-neutral-700 transition-all hover:shadow-lg group"
+      className="flex flex-col bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
     >
-      {/* Banner */}
-      <div className="relative h-24 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500">
+      {/* Banner — subtle, professional */}
+      <div className="relative h-16 bg-gradient-to-r from-slate-100 via-gray-50 to-slate-100 dark:from-neutral-800 dark:via-neutral-800/70 dark:to-neutral-800">
         {person.bannerImageUrl && (
           <img
             src={person.bannerImageUrl}
@@ -236,21 +237,12 @@ export function PersonCard({ person, onConnectionChange, badgeLabel }: PersonCar
             className="w-full h-full object-cover"
           />
         )}
-        
-        {/* Online indicator */}
-        {person.isOnline && (
-          <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 bg-green-500 text-white text-xs font-medium rounded-full">
-            <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-            Online
-          </div>
-        )}
       </div>
-      
-      {/* Content */}
-      <div className="relative px-4 pb-4">
-        {/* Profile Image */}
-        <Link href={`/profile/${person.username}`}>
-          <div className="absolute -top-10 left-4 w-20 h-20 rounded-full border-4 border-white dark:border-neutral-900 overflow-hidden bg-gray-200 dark:bg-neutral-700 group-hover:border-gray-100 dark:group-hover:border-neutral-800 transition-colors">
+
+      {/* Avatar — centered, overlapping banner */}
+      <div className="flex justify-center">
+        <Link href={`/profile/${person.username}`} className="relative -mt-10">
+          <div className="w-20 h-20 rounded-full ring-4 ring-white dark:ring-neutral-900 overflow-hidden bg-gray-100 dark:bg-neutral-800">
             {person.profileImage ? (
               <img
                 src={person.profileImage}
@@ -258,104 +250,78 @@ export function PersonCard({ person, onConnectionChange, badgeLabel }: PersonCar
                 className="w-full h-full object-cover"
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-2xl font-bold text-gray-500 dark:text-neutral-400">
+              <div className="w-full h-full flex items-center justify-center text-2xl font-semibold text-gray-500 dark:text-neutral-400">
                 {person.name.charAt(0).toUpperCase()}
               </div>
             )}
           </div>
+          {person.isOnline && (
+            <span
+              className="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-green-500 ring-[3px] ring-white dark:ring-neutral-900"
+              title="Online"
+            />
+          )}
         </Link>
-        
-        {/* Connection Button - positioned at top right */}
-        <div className="absolute -top-4 right-4">
-          {renderConnectionButton()}
-        </div>
-        
-        {/* User Info */}
-        <div className="pt-12">
-          <Link href={`/profile/${person.username}`}>
-            <h3 className="font-semibold text-lg text-gray-900 dark:text-white hover:text-blue-500 dark:hover:text-blue-400 transition-colors">
-              {person.name}
-            </h3>
-          </Link>
-          <p className="text-sm text-gray-500 dark:text-neutral-400">
-            @{person.username}
-          </p>
+      </div>
 
-          {badgeLabel && (
-            <div className="mt-2">
-              <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                {badgeLabel}
+      {/* Info — centered */}
+      <div className="flex flex-col flex-1 items-center text-center px-4 pt-2 pb-4">
+        <Link href={`/profile/${person.username}`} className="group/name">
+          <h3 className="font-semibold text-base text-gray-900 dark:text-white group-hover/name:underline underline-offset-2">
+            {person.name}
+          </h3>
+        </Link>
+        <p className="text-xs text-gray-500 dark:text-neutral-400">@{person.username}</p>
+
+        {badgeLabel && (
+          <span className="mt-1.5 inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+            {badgeLabel}
+          </span>
+        )}
+
+        {person.headline && (
+          <p className="mt-1.5 text-sm text-gray-600 dark:text-neutral-300 line-clamp-2">
+            {person.headline}
+          </p>
+        )}
+
+        {person.college && (
+          <div className="mt-2 flex items-center justify-center gap-1.5 max-w-full text-xs text-gray-500 dark:text-neutral-400">
+            <GraduationCap className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">
+              {person.college}
+              {person.branch && ` · ${person.branch}`}
+            </span>
+          </div>
+        )}
+
+        {person.skills && person.skills.length > 0 && (
+          <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+            {person.skills.slice(0, 3).map((skill, index) => (
+              <span
+                key={index}
+                className="px-2 py-0.5 rounded-md bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300 text-xs font-medium"
+              >
+                {skill}
               </span>
-            </div>
-          )}
-          
-          {/* Headline */}
-          {person.headline && (
-            <p className="text-sm text-gray-600 dark:text-neutral-300 mt-1 line-clamp-2">
-              {person.headline}
-            </p>
-          )}
-          
-          {/* College */}
-          {person.college && (
-            <div className="flex items-center gap-1.5 mt-2 text-sm text-gray-500 dark:text-neutral-400">
-              <GraduationCap className="w-4 h-4 flex-shrink-0" />
-              <span className="truncate">{person.college}</span>
-              {person.branch && (
-                <span className="text-gray-400 dark:text-neutral-500">• {person.branch}</span>
-              )}
-            </div>
-          )}
-          
-          {/* Skills */}
-          {person.skills && person.skills.length > 0 && (
-            <div className="mt-3">
-              <div className="flex flex-wrap gap-1.5">
-                {person.skills.slice(0, 4).map((skill, index) => (
-                  <span
-                    key={index}
-                    className="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs font-medium rounded-full"
-                  >
-                    {skill}
-                  </span>
-                ))}
-                {person.skills.length > 4 && (
-                  <span className="px-2 py-0.5 bg-gray-100 dark:bg-neutral-800 text-gray-500 dark:text-neutral-400 text-xs font-medium rounded-full">
-                    +{person.skills.length - 4}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-          
-          {/* Interests */}
-          {person.interests && person.interests.length > 0 && (
-            <div className="mt-2">
-              <div className="flex flex-wrap gap-1.5">
-                {person.interests.slice(0, 3).map((interest, index) => (
-                  <span
-                    key={index}
-                    className="px-2 py-0.5 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-xs font-medium rounded-full"
-                  >
-                    {interest}
-                  </span>
-                ))}
-                {person.interests.length > 3 && (
-                  <span className="px-2 py-0.5 bg-gray-100 dark:bg-neutral-800 text-gray-500 dark:text-neutral-400 text-xs font-medium rounded-full">
-                    +{person.interests.length - 3}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-          
-          {/* Mutual Connections */}
-          {person.mutualConnections !== undefined && person.mutualConnections > 0 && (
-            <p className="mt-3 text-xs text-gray-400 dark:text-neutral-500">
-              {person.mutualConnections} mutual connection{person.mutualConnections !== 1 ? 's' : ''}
-            </p>
-          )}
-        </div>
+            ))}
+            {person.skills.length > 3 && (
+              <span className="px-2 py-0.5 rounded-md bg-gray-100 dark:bg-neutral-800 text-gray-500 dark:text-neutral-400 text-xs font-medium">
+                +{person.skills.length - 3}
+              </span>
+            )}
+          </div>
+        )}
+
+        {person.mutualConnections !== undefined && person.mutualConnections > 0 && (
+          <p className="mt-2.5 flex items-center gap-1.5 text-xs text-gray-500 dark:text-neutral-400">
+            <Users className="w-3.5 h-3.5" />
+            {person.mutualConnections} mutual connection{person.mutualConnections !== 1 ? 's' : ''}
+          </p>
+        )}
+
+        {/* Action — pinned to bottom so cards in a row align */}
+        <div className="mt-auto w-full pt-4">{renderConnectionButton()}</div>
       </div>
 
       <ConnectionSentToast

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { AlertCircle, RefreshCw, Lock } from 'lucide-react';
+import { AlertCircle, RefreshCw, Lock, Rss } from 'lucide-react';
 import { useAuth } from '@/lib/auth/useAuth';
 import {
   getProfile,
@@ -16,6 +16,7 @@ import {
 } from '@/lib/api/profile';
 import { ProfileHeader } from './ProfileHeader';
 import { ProfileAbout } from './ProfileAbout';
+import { Reveal } from './ProfileSection';
 import { GitHubStats } from './GitHubStats';
 import { ActivityCalendar } from './ActivityCalendar';
 import { SkillsGrid } from './SkillsGrid';
@@ -556,7 +557,7 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-neutral-950 pb-24 overflow-x-hidden">
+    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 pb-24 overflow-x-hidden">
       <ProfileHeader
         user={{
           ...profile.user,
@@ -569,13 +570,8 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
         onEditBanner={() => setBannerModalOpen(true)}
       />
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="grid gap-6"
-        >
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+        <div className="grid gap-6 sm:gap-8">
           {/* About Section (Bio & Interests) */}
           <ProfileAbout
             user={profile.user}
@@ -584,22 +580,26 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
             onRemoveInterest={handleRemoveInterest}
           />
 
-          <GitHubStats
-            github={profile.github}
-            isOwner={!!isOwner}
-            onSync={handleGitHubSync}
-            onConnect={handleGitHubConnect}
-          />
+          <Reveal>
+            <GitHubStats
+              github={profile.github}
+              isOwner={!!isOwner}
+              onSync={handleGitHubSync}
+              onConnect={handleGitHubConnect}
+            />
+          </Reveal>
 
-          <ActivityCalendar
-            userId={profile.user.id}
-            activityData={activityData}
-            currentStreak={profile.stats.currentStreak}
-            longestStreak={profile.stats.longestStreak}
-            onYearChange={handleYearChange}
-            availableYears={availableYears || undefined}
-            isLoading={activityLoading}
-          />
+          <Reveal>
+            <ActivityCalendar
+              userId={profile.user.id}
+              activityData={activityData}
+              currentStreak={profile.stats.currentStreak}
+              longestStreak={profile.stats.longestStreak}
+              onYearChange={handleYearChange}
+              availableYears={availableYears || undefined}
+              isLoading={activityLoading}
+            />
+          </Reveal>
 
           <SkillsGrid
             skills={profile.skills}
@@ -654,14 +654,21 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
             onEditAchievement={handleEditAchievement}
           />
 
-          <div className="mt-8">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Activity Feed</h2>
-            <ProfileFeed
-              userId={profile.user.id}
-              initialFeed={profile.recentActivity}
-            />
-          </div>
-        </motion.div>
+          <Reveal>
+            <div className="mt-4">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <Rss className="w-5 h-5" />
+                </div>
+                <h2 className="text-lg font-semibold tracking-tight text-neutral-900 dark:text-white">Activity Feed</h2>
+              </div>
+              <ProfileFeed
+                userId={profile.user.id}
+                initialFeed={profile.recentActivity}
+              />
+            </div>
+          </Reveal>
+        </div>
       </div>
 
       {isOwner && profile && (

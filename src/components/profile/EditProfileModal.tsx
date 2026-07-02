@@ -20,6 +20,7 @@ import {
 import { Button } from '@/components/ui/Button';
 import { updateProfile, updateAvatar, updateBanner } from '@/lib/api/profile';
 import type { ProfileUser, ProfileUpdateData } from '@/types/profile';
+import { formatLocation } from '@/lib/utils/profileLocation';
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -28,13 +29,15 @@ interface EditProfileModalProps {
   onProfileUpdate: (updatedUser: Partial<ProfileUser>) => void;
 }
 
+type ProfileSection = 'basic' | 'education' | 'links' | 'privacy';
+
 export function EditProfileModal({
   isOpen,
   onClose,
   user,
   onProfileUpdate,
 }: EditProfileModalProps) {
-  const [activeSection, setActiveSection] = useState<'basic' | 'education' | 'links' | 'privacy'>('basic');
+  const [activeSection, setActiveSection] = useState<ProfileSection>('basic');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,7 +45,7 @@ export function EditProfileModal({
   const [formData, setFormData] = useState<ProfileUpdateData>({
     headline: user.headline || '',
     bio: user.bio || '',
-    location: user.location || '',
+    location: formatLocation(user.location),
     currentYear: user.currentYear || undefined,
     degree: user.degree || '',
     graduationYear: user.graduationYear || undefined,
@@ -98,14 +101,15 @@ export function EditProfileModal({
       await updateProfile(formData);
       onProfileUpdate(formData);
       onClose();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to update profile');
+    } catch (err: unknown) {
+      const apiError = err as { response?: { data?: { error?: string } } };
+      setError(apiError.response?.data?.error || 'Failed to update profile');
     } finally {
       setSaving(false);
     }
   };
 
-  const sections = [
+  const sections: { id: ProfileSection; label: string; icon: React.ReactNode }[] = [
     { id: 'basic', label: 'Basic Info', icon: <User className="w-4 h-4" /> },
     { id: 'education', label: 'Education', icon: <GraduationCap className="w-4 h-4" /> },
     { id: 'links', label: 'Links', icon: <Link2 className="w-4 h-4" /> },
@@ -135,7 +139,7 @@ export function EditProfileModal({
               {sections.map((section) => (
                 <button
                   key={section.id}
-                  onClick={() => setActiveSection(section.id as any)}
+                  onClick={() => setActiveSection(section.id)}
                   className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
                     activeSection === section.id
                       ? 'bg-blue-500/20 text-blue-400'

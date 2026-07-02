@@ -4,9 +4,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { getSocket } from '@/lib/socket';
-import { cn } from '@/lib/utils';
 import ReportModal from '@/components/reports/ReportModal';
-import { MoreVertical, Flag, UserX, Bell, BellOff } from 'lucide-react';
+import { MoreVertical, Flag, ArrowLeft, Phone, Video, Info } from 'lucide-react';
 
 interface ChatHeaderProps {
   user: {
@@ -25,7 +24,21 @@ interface ChatHeaderProps {
 export default function ChatHeader({ user, conversationId, onBack, onInfo }: ChatHeaderProps) {
   const [isOnline, setIsOnline] = useState(user.isOnline || false);
   const [lastActive, setLastActive] = useState(user.lastActiveAt);
+  const [prevUserStatus, setPrevUserStatus] = useState({
+    isOnline: user.isOnline,
+    lastActiveAt: user.lastActiveAt,
+  });
   const [showMenu, setShowMenu] = useState(false);
+
+  // Re-sync from props during render when the user prop changes
+  if (
+    prevUserStatus.isOnline !== user.isOnline ||
+    prevUserStatus.lastActiveAt !== user.lastActiveAt
+  ) {
+    setPrevUserStatus({ isOnline: user.isOnline, lastActiveAt: user.lastActiveAt });
+    setIsOnline(user.isOnline || false);
+    setLastActive(user.lastActiveAt);
+  }
   const [showReportModal, setShowReportModal] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -79,29 +92,22 @@ export default function ChatHeader({ user, conversationId, onBack, onInfo }: Cha
     };
   }, [user.id]);
 
-  // Update initial state when user prop changes
-  useEffect(() => {
-    setIsOnline(user.isOnline || false);
-    setLastActive(user.lastActiveAt);
-  }, [user.isOnline, user.lastActiveAt]);
-
   return (
-    <div className="flex items-center gap-3 p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
       {/* Back button (mobile) */}
       {onBack && (
         <button
           onClick={onBack}
-          className="p-2 -ml-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full md:hidden"
+          className="p-2 -ml-2 rounded-full text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 md:hidden transition-colors"
+          aria-label="Back to conversations"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
+          <ArrowLeft className="w-5 h-5" />
         </button>
       )}
 
       {/* Avatar */}
       <Link href={`/profile/${user.username}`} className="relative flex-shrink-0">
-        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold">
+        <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-950/60 flex items-center justify-center text-blue-700 dark:text-blue-300 font-semibold overflow-hidden">
           {user.profileImage ? (
             <img
               src={user.profileImage}
@@ -114,21 +120,24 @@ export default function ChatHeader({ user, conversationId, onBack, onInfo }: Cha
         </div>
         {/* Online indicator */}
         {isOnline && (
-          <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
+          <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full ring-2 ring-white dark:ring-neutral-900"></div>
         )}
       </Link>
 
       {/* User info */}
       <div className="flex-1 min-w-0">
-        <Link 
+        <Link
           href={`/profile/${user.username}`}
-          className="font-semibold text-gray-900 dark:text-white hover:underline truncate block"
+          className="text-sm font-semibold text-gray-900 dark:text-white hover:underline truncate block"
         >
           {user.name}
         </Link>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+        <p className="text-xs text-gray-500 dark:text-neutral-400">
           {isOnline ? (
-            <span className="text-green-600 dark:text-green-400">Online</span>
+            <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+              Online
+            </span>
           ) : lastActive ? (
             `Last seen ${formatDistanceToNow(new Date(lastActive), { addSuffix: true })}`
           ) : (
@@ -138,39 +147,33 @@ export default function ChatHeader({ user, conversationId, onBack, onInfo }: Cha
       </div>
 
       {/* Action buttons */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
         {/* Voice call (future) */}
         <button
-          className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+          className="p-2 rounded-full text-gray-400 dark:text-neutral-600 cursor-not-allowed"
           title="Voice call (coming soon)"
           disabled
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-          </svg>
+          <Phone className="w-5 h-5" />
         </button>
 
         {/* Video call (future) */}
         <button
-          className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+          className="p-2 rounded-full text-gray-400 dark:text-neutral-600 cursor-not-allowed"
           title="Video call (coming soon)"
           disabled
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
+          <Video className="w-5 h-5" />
         </button>
 
         {/* Info button */}
         {onInfo && (
           <button
             onClick={onInfo}
-            className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+            className="p-2 rounded-full text-gray-500 dark:text-neutral-400 hover:text-gray-700 dark:hover:text-neutral-200 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
             title="Chat info"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+            <Info className="w-5 h-5" />
           </button>
         )}
 
@@ -178,20 +181,20 @@ export default function ChatHeader({ user, conversationId, onBack, onInfo }: Cha
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setShowMenu(!showMenu)}
-            className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+            className="p-2 rounded-full text-gray-500 dark:text-neutral-400 hover:text-gray-700 dark:hover:text-neutral-200 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
             title="More options"
           >
             <MoreVertical className="w-5 h-5" />
           </button>
 
           {showMenu && (
-            <div className="absolute right-0 top-full mt-1 w-48 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg z-50">
+            <div className="absolute right-0 top-full mt-1 w-48 py-1 rounded-lg bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 shadow-lg z-50">
               <button
                 onClick={() => {
                   setShowReportModal(true);
                   setShowMenu(false);
                 }}
-                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-neutral-700"
               >
                 <Flag className="w-4 h-4" />
                 Report User

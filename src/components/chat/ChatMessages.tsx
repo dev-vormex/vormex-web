@@ -1195,8 +1195,10 @@ function MessageBubble({
             }
           })()}
 
-          {/* Text content - hide for reel (thumbnail only) and post */}
-          {message.contentType !== 'post' && message.contentType !== 'reel' && (isEditing ? (
+          {/* Text content - hide for reel (thumbnail only) and shared posts */}
+          {message.contentType !== 'post' &&
+            message.contentType !== 'application/x-shared-post' &&
+            message.contentType !== 'reel' && (isEditing ? (
             <div className="flex gap-2">
               <input
                 type="text"

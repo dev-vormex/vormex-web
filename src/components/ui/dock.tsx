@@ -286,14 +286,16 @@ export function VormexDock() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const { user } = useAuth();
 
-  // Hide dock on auth/onboarding and full-screen messaging routes to avoid input overlap.
+  // Hide dock on auth/onboarding routes, and inside an open conversation where
+  // the chat input sits at the bottom. The /messages list keeps the dock so
+  // users can navigate back out of messaging.
   const hideDockPrefixes = [
     '/login',
     '/forgot-password',
     '/reset-password',
     '/verify-email',
     '/onboarding',
-    '/messages',
+    '/messages/',
     '/vormex-delete-account',
   ];
   if (hideDockPrefixes.some((prefix) => pathname.startsWith(prefix))) {

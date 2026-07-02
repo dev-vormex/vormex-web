@@ -38,6 +38,7 @@ import { ReportModal } from '@/components/ui/ReportModal';
 import { BlockUserModal } from '@/components/ui/BlockUserModal';
 import ConnectionSentToast from '@/components/engagement/ConnectionSentToast';
 import type { ProfileUser, ProfileStats } from '@/types/profile';
+import { formatLocation } from '@/lib/utils/profileLocation';
 
 interface ProfileHeaderProps {
   user: ProfileUser;
@@ -76,6 +77,7 @@ export function ProfileHeader({
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [messageError, setMessageError] = useState<string | null>(null);
+  const locationLabel = formatLocation(user.location);
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
@@ -257,7 +259,7 @@ export function ProfileHeader({
   };
 
   return (
-    <div className="bg-white dark:bg-neutral-950">
+    <div>
       {/* ══════════════════════════════════════════════════════════════════════════
           BANNER SECTION - LinkedIn Style with Customizable Cover
       ══════════════════════════════════════════════════════════════════════════ */}
@@ -270,8 +272,11 @@ export function ProfileHeader({
           />
         ) : (
           /* Professional gradient default - subtle and clean */
-          <div className="w-full h-full bg-gradient-to-br from-slate-700 via-slate-600 to-slate-800" />
+          <div className="w-full h-full bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950" />
         )}
+
+        {/* Depth overlay so the profile card melts into the banner */}
+        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/40 via-transparent to-transparent pointer-events-none" />
 
         {/* Edit banner button (owner only) */}
         {isOwner && (
@@ -289,7 +294,12 @@ export function ProfileHeader({
           MAIN PROFILE CARD - Clean, Spacious Layout
       ══════════════════════════════════════════════════════════════════════════════ */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="relative bg-white dark:bg-neutral-900 rounded-xl shadow-sm border border-gray-100 dark:border-neutral-800 -mt-16 sm:-mt-20">
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55, ease: [0.22, 0.61, 0.36, 1] }}
+          className="relative bg-white dark:bg-neutral-900 rounded-2xl shadow-xl shadow-neutral-900/[0.06] dark:shadow-black/40 border border-gray-100 dark:border-neutral-800 -mt-16 sm:-mt-20"
+        >
           {/* Profile content wrapper with generous padding */}
           <div className="px-4 sm:px-8 lg:px-10 pt-20 sm:pt-4 pb-6">
 
@@ -643,7 +653,7 @@ export function ProfileHeader({
             <div className="mt-6 sm:mt-8">
               {/* Name Row */}
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">
                   {user.name}
                 </h1>
                 {user.isOpenToOpportunities && (
@@ -662,10 +672,10 @@ export function ProfileHeader({
 
               {/* Location & Education - Lighter weight */}
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-neutral-400">
-                {user.location && (
+                {locationLabel && (
                   <span className="flex items-center gap-1.5">
                     <MapPin className="w-4 h-4" />
-                    {user.location}
+                    {locationLabel}
                   </span>
                 )}
                 {user.college && (
@@ -905,7 +915,7 @@ export function ProfileHeader({
               )}
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       <ConnectionSentToast
@@ -952,7 +962,7 @@ interface StatItemProps {
 function StatItem({ value, label, isClickable, onClick }: StatItemProps) {
   const baseClasses = "flex items-center gap-1";
   const clickableClasses = isClickable
-    ? "cursor-pointer hover:underline decoration-blue-500 underline-offset-2"
+    ? "cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 [&>span]:transition-colors hover:[&>span]:text-blue-600 dark:hover:[&>span]:text-blue-400"
     : "";
 
   return (

@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 import Image from 'next/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth/useAuth';
 import { getStoriesFeed, type StoryGroup, type Story } from '@/lib/api/stories';
-import { getSocket } from '@/lib/socket';
+import { initializeSocket } from '@/lib/socket';
 
 interface StoryCarouselProps {
   onOpenStory: (group: StoryGroup, startIndex?: number) => void;
@@ -31,20 +31,22 @@ export function StoryCarousel({ onOpenStory, onCreateStory }: StoryCarouselProps
     staleTime: 5 * 60 * 1000, // 5 min - instant back navigation
     gcTime: 10 * 60 * 1000,
     enabled: !authLoading && !!user,
-    retry: (failureCount, error: any) =>
-      failureCount < 2 && error?.response?.status !== 401,
+    retry: (failureCount, error) =>
+      failureCount < 2 &&
+      (error as { response?: { status?: number } })?.response?.status !== 401,
   });
 
-  const storyGroups = data ?? [];
+  const storyGroups = useMemo(() => data ?? [], [data]);
   const loading = authLoading || (queryLoading && storyGroups.length === 0);
 
-  // Listen for real-time story updates
+  // Listen for real-time story updates.
+  // initializeSocket() (not getSocket()) so this works even when this child
+  // component mounts before the parent Feed has created the socket.
   useEffect(() => {
-    const socket = getSocket();
-    if (!socket) return;
+    if (!user?.id) return;
+    const socket = initializeSocket();
 
-    const handleStoryCreated = (data: { story: Story; author: any; timestamp: Date }) => {
-      console.log('📖 Real-time: New story received', data);
+    const handleStoryCreated = (data: { story: Story; author: StoryGroup['user']; timestamp: Date }) => {
       queryClient.setQueryData<StoryGroup[]>(['stories', user?.id], (prev) => {
         const list = prev ?? [];
         const existingGroupIndex = list.findIndex(g => g.user.id === data.author.id);
@@ -76,7 +78,6 @@ export function StoryCarousel({ onOpenStory, onCreateStory }: StoryCarouselProps
     };
 
     const handleStoryDeleted = (data: { storyId: string; authorId: string; timestamp: Date }) => {
-      console.log('🗑️ Real-time: Story deleted', data);
       queryClient.setQueryData<StoryGroup[]>(['stories', user?.id], (prev) => {
         const list = prev ?? [];
         return list.map(group => {
@@ -100,20 +101,20 @@ export function StoryCarousel({ onOpenStory, onCreateStory }: StoryCarouselProps
   }, [user?.id, queryClient]);
 
   useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
     const checkScroll = () => {
-      if (scrollRef.current) {
-        const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
-        setCanScrollLeft(scrollLeft > 0);
-        setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 10);
-      }
+      setCanScrollLeft(el.scrollLeft > 0);
+      setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 10);
     };
 
     checkScroll();
-    scrollRef.current?.addEventListener('scroll', checkScroll);
+    el.addEventListener('scroll', checkScroll, { passive: true });
     window.addEventListener('resize', checkScroll);
 
     return () => {
-      scrollRef.current?.removeEventListener('scroll', checkScroll);
+      el.removeEventListener('scroll', checkScroll);
       window.removeEventListener('resize', checkScroll);
     };
   }, [storyGroups]);
@@ -240,6 +241,19 @@ export function StoryCarousel({ onOpenStory, onCreateStory }: StoryCarouselProps
             onClick={() => onOpenStory(group)}
           />
         ))}
+
+        {/* Empty state — fills the row instead of leaving a blank void */}
+        {otherStoryGroups.length === 0 && (
+          <div className="flex-1 min-w-[220px] h-40 rounded-2xl border-2 border-dashed border-gray-200 dark:border-neutral-800 flex flex-col items-center justify-center gap-1 px-6">
+            <span className="text-xl">✨</span>
+            <p className="text-xs font-semibold text-gray-500 dark:text-neutral-400">
+              No stories from your network yet
+            </p>
+            <p className="text-[11px] text-gray-400 dark:text-neutral-500 text-center">
+              Share what you&apos;re working on and start the streak
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
