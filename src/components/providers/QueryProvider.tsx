@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
   ACTIVITY_STALE_TIME,
+  CHAT_GC_TIME,
   CHAT_STALE_TIME,
   FEED_STALE_TIME,
   FIND_PEOPLE_STALE_TIME,
@@ -32,9 +33,21 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       client.setQueryDefaults(['find-people-initial'], { staleTime: FIND_PEOPLE_STALE_TIME });
       client.setQueryDefaults(['people-filter-options'], { staleTime: FIND_PEOPLE_STALE_TIME });
       client.setQueryDefaults(['smart-matches'], { staleTime: FIND_PEOPLE_STALE_TIME });
-      client.setQueryDefaults(['chat-conversations'], { staleTime: CHAT_STALE_TIME });
-      client.setQueryDefaults(['chat-conversation'], { staleTime: CHAT_STALE_TIME });
-      client.setQueryDefaults(['chat-messages'], { staleTime: CHAT_STALE_TIME });
+      client.setQueryDefaults(['chat-conversations'], {
+        staleTime: CHAT_STALE_TIME,
+        gcTime: CHAT_GC_TIME,
+        refetchOnMount: false,
+      });
+      client.setQueryDefaults(['chat-conversation'], {
+        staleTime: CHAT_STALE_TIME,
+        gcTime: CHAT_GC_TIME,
+        refetchOnMount: false,
+      });
+      client.setQueryDefaults(['chat-messages'], {
+        staleTime: CHAT_STALE_TIME,
+        gcTime: CHAT_GC_TIME,
+        refetchOnMount: false,
+      });
 
       return client;
     }

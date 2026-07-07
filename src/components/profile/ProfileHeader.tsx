@@ -31,6 +31,7 @@ import {
   Shield,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import { getConnectionStatus, sendConnectionRequest, cancelConnectionRequest, removeConnection, acceptConnectionRequest } from '@/lib/api/connections';
 import { followUser, unfollowUser, getFollowStatus, getMutualInfo, type MutualInfo } from '@/lib/api/follow';
 import { getOrCreateConversation } from '@/lib/api/chat';
@@ -39,6 +40,7 @@ import { BlockUserModal } from '@/components/ui/BlockUserModal';
 import ConnectionSentToast from '@/components/engagement/ConnectionSentToast';
 import type { ProfileUser, ProfileStats } from '@/types/profile';
 import { formatLocation } from '@/lib/utils/profileLocation';
+import { resolveMediaUrl } from '@/lib/utils/media';
 
 interface ProfileHeaderProps {
   user: ProfileUser;
@@ -47,6 +49,25 @@ interface ProfileHeaderProps {
   onEditProfile?: () => void;
   onEditBanner?: () => void;
   onEditAvatar?: () => void;
+}
+
+function ProfileCoverImage({ imageSrc }: { imageSrc?: string | null }) {
+  const resolvedSrc = resolveMediaUrl(imageSrc);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const failed = Boolean(resolvedSrc && failedSrc === resolvedSrc);
+
+  if (!resolvedSrc || failed) {
+    return <div className="w-full h-full bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950" />;
+  }
+
+  return (
+    <img
+      src={resolvedSrc}
+      alt="Cover photo"
+      className="w-full h-full object-cover"
+      onError={() => setFailedSrc(resolvedSrc)}
+    />
+  );
 }
 
 export function ProfileHeader({
@@ -264,16 +285,7 @@ export function ProfileHeader({
           BANNER SECTION - LinkedIn Style with Customizable Cover
       ══════════════════════════════════════════════════════════════════════════ */}
       <div className="relative h-48 sm:h-56 md:h-64 lg:h-72 w-full">
-        {user.bannerImageUrl ? (
-          <img
-            src={user.bannerImageUrl}
-            alt="Cover photo"
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          /* Professional gradient default - subtle and clean */
-          <div className="w-full h-full bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950" />
-        )}
+        <ProfileCoverImage imageSrc={user.bannerImageUrl} />
 
         {/* Depth overlay so the profile card melts into the banner */}
         <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/40 via-transparent to-transparent pointer-events-none" />
@@ -327,36 +339,22 @@ export function ProfileHeader({
                           }}
                         />
                         <div className="absolute inset-[6px] rounded-full overflow-hidden bg-white dark:bg-neutral-900 shadow-inner">
-                          {user.avatar ? (
-                            <img
-                              src={user.avatar}
-                              alt={user.name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center">
-                              <span className="text-4xl sm:text-6xl font-bold text-white">
-                                {user.name?.charAt(0)?.toUpperCase() || '?'}
-                              </span>
-                            </div>
-                          )}
+                          <UserAvatar
+                            imageSrc={user.avatar}
+                            name={user.name}
+                            className="h-full w-full rounded-full bg-gradient-to-br from-blue-600 to-blue-700 text-white"
+                            fallbackClassName="text-4xl sm:text-6xl"
+                          />
                         </div>
                       </div>
                     ) : (
                       <div className="w-28 h-28 sm:w-40 sm:h-40 lg:w-44 lg:h-44 rounded-full overflow-hidden border-4 border-white dark:border-neutral-900 shadow-xl bg-white dark:bg-neutral-900">
-                        {user.avatar ? (
-                          <img
-                            src={user.avatar}
-                            alt={user.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center">
-                            <span className="text-4xl sm:text-6xl font-bold text-white">
-                              {user.name?.charAt(0)?.toUpperCase() || '?'}
-                            </span>
-                          </div>
-                        )}
+                        <UserAvatar
+                          imageSrc={user.avatar}
+                          name={user.name}
+                          className="h-full w-full rounded-full bg-gradient-to-br from-blue-600 to-blue-700 text-white"
+                          fallbackClassName="text-4xl sm:text-6xl"
+                        />
                       </div>
                     )}
                   </div>
@@ -827,17 +825,12 @@ export function ProfileHeader({
                               className="w-6 h-6 rounded-full border-2 border-white dark:border-neutral-900 overflow-hidden bg-gray-200 dark:bg-neutral-700"
                               style={{ zIndex: 3 - idx }}
                             >
-                              {connection.profileImage ? (
-                                <img
-                                  src={connection.profileImage}
-                                  alt={connection.name}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-xs font-medium text-gray-500 dark:text-neutral-400">
-                                  {connection.name?.charAt(0)}
-                                </div>
-                              )}
+                              <UserAvatar
+                                imageSrc={connection.profileImage}
+                                name={connection.name}
+                                className="h-full w-full rounded-full text-xs font-medium"
+                                fallbackClassName="text-xs"
+                              />
                             </div>
                           ))}
                         </div>
@@ -867,17 +860,12 @@ export function ProfileHeader({
                               className="w-6 h-6 rounded-full border-2 border-white dark:border-neutral-900 overflow-hidden bg-gray-200 dark:bg-neutral-700"
                               style={{ zIndex: 3 - idx }}
                             >
-                              {follower.profileImage ? (
-                                <img
-                                  src={follower.profileImage}
-                                  alt={follower.name}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-xs font-medium text-gray-500 dark:text-neutral-400">
-                                  {follower.name?.charAt(0)}
-                                </div>
-                              )}
+                              <UserAvatar
+                                imageSrc={follower.profileImage}
+                                name={follower.name}
+                                className="h-full w-full rounded-full text-xs font-medium"
+                                fallbackClassName="text-xs"
+                              />
                             </div>
                           ))}
                         </div>

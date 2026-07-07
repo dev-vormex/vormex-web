@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { getSocket } from '@/lib/socket';
 import ReportModal from '@/components/reports/ReportModal';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import { MoreVertical, Flag, ArrowLeft, Phone, Video, Info } from 'lucide-react';
 
 interface ChatHeaderProps {
@@ -107,17 +108,11 @@ export default function ChatHeader({ user, conversationId, onBack, onInfo }: Cha
 
       {/* Avatar */}
       <Link href={`/profile/${user.username}`} className="relative flex-shrink-0">
-        <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-950/60 flex items-center justify-center text-blue-700 dark:text-blue-300 font-semibold overflow-hidden">
-          {user.profileImage ? (
-            <img
-              src={user.profileImage}
-              alt={user.name}
-              className="w-10 h-10 rounded-full object-cover"
-            />
-          ) : (
-            user.name.charAt(0).toUpperCase()
-          )}
-        </div>
+        <UserAvatar
+          imageSrc={user.profileImage}
+          name={user.name}
+          className="h-10 w-10 bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
+        />
         {/* Online indicator */}
         {isOnline && (
           <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full ring-2 ring-white dark:ring-neutral-900"></div>

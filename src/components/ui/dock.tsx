@@ -28,6 +28,7 @@ import dynamic from 'next/dynamic';
 import { useAuth } from '@/lib/auth/useAuth';
 import { BottomNavigation } from './BottomNavigation';
 import { PeopleYouKnowTabIcon } from '@/components/find-people/FindPeopleTabIcons';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 // Dynamically import CreatePostModal to avoid circular dependencies
 const CreatePostModal = dynamic(() => import('@/components/feed/CreatePostModal'), {
@@ -261,22 +262,13 @@ function DockIcon({ children, className, width }: DockIconProps) {
 function UserAvatarIcon({ imageSrc, name, size = 'full' }: UserAvatarIconProps) {
   const sizeClass = size === 'small' ? 'w-6 h-6' : 'h-full w-full';
 
-  if (imageSrc) {
-    return (
-      <img
-        src={imageSrc}
-        alt={name || 'Profile'}
-        className={`${sizeClass} rounded-full object-cover`}
-      />
-    );
-  }
-
   return (
-    <div className={`${sizeClass} rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center`}>
-      <span className={`text-white font-semibold ${size === 'small' ? 'text-xs' : 'text-sm'}`}>
-        {name?.charAt(0)?.toUpperCase() || '?'}
-      </span>
-    </div>
+    <UserAvatar
+      imageSrc={imageSrc}
+      name={name}
+      className={`${sizeClass} bg-gradient-to-br from-blue-500 to-purple-500 text-white`}
+      fallbackClassName={size === 'small' ? 'text-xs' : 'text-sm'}
+    />
   );
 }
 

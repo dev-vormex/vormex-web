@@ -43,13 +43,18 @@ export default function LiveActivityIndicator({
 
   // Fetch every 30 seconds — creates feeling of real-time updates
   useEffect(() => {
-    void fetchStats();
+    const initialFetch = setTimeout(() => {
+      void fetchStats();
+    }, 0);
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         void fetchStats();
       }
     }, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialFetch);
+      clearInterval(interval);
+    };
   }, [fetchStats]);
 
   // Rotate through different stats every 5 seconds — maintains attention
@@ -124,9 +129,6 @@ function getStatMessages(stats: LiveStats): string[] {
   }
   if (stats.activeLastHour > 0) {
     msgs.push(`⚡ ${stats.activeLastHour} active in the last hour`);
-  }
-  if (stats.connectionsToday > 0) {
-    msgs.push(`🤝 ${stats.connectionsToday} connections made today`);
   }
   if (stats.newUsersToday > 0) {
     msgs.push(`🆕 ${stats.newUsersToday} new members joined today`);

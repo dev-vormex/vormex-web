@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Message,
@@ -19,11 +19,16 @@ import {
 } from '@/lib/socket';
 import { format, isToday, isYesterday } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import MessageMenu, { MessageQuickActions } from './MessageMenu';
 import { WALLPAPER_OPTIONS } from './ChatSettingsPanel';
 import type { UploadingMessage, OptimisticMessage } from './ChatInput';
 import { DEFAULT_CHAT_REACTIONS } from '@/lib/chat/customization';
-import { queryKeys } from '@/lib/queryKeys';
+import { CHAT_STALE_TIME, queryKeys } from '@/lib/queryKeys';
+import {
+  readCachedMessages,
+  writeCachedMessages,
+} from '@/lib/chat/browserCache';
 
 const HISTORY_LOAD_THRESHOLD = 96;
 const AUTO_SCROLL_THRESHOLD = 120;
@@ -135,9 +140,13 @@ export default function ChatMessages({
   onLastMessageUpdate,
 }: ChatMessagesProps) {
   const queryClient = useQueryClient();
-  const cachedMessagesResponse = queryClient.getQueryData<MessagesResponse>(
-    queryKeys.chatMessages(conversationId)
+  const messagesQueryKey = useMemo(
+    () => queryKeys.chatMessages(conversationId),
+    [conversationId]
   );
+  const cachedMessagesResponse = queryClient.getQueryData<MessagesResponse>(
+    messagesQueryKey
+  ) ?? readCachedMessages(currentUserId, conversationId)?.value;
   const [messages, setMessages] = useState<Message[]>(
     () => cachedMessagesResponse?.messages.map(normalizeMessage) ?? []
   );
@@ -173,12 +182,15 @@ export default function ChatMessages({
       return;
     }
 
-    queryClient.setQueryData<MessagesResponse>(queryKeys.chatMessages(conversationId), {
+    const nextResponse = {
       messages,
       hasMore,
       nextCursor,
-    });
-  }, [conversationId, hasMore, loading, messages, nextCursor, queryClient]);
+    };
+
+    queryClient.setQueryData<MessagesResponse>(messagesQueryKey, nextResponse);
+    writeCachedMessages(currentUserId, conversationId, nextResponse);
+  }, [conversationId, currentUserId, hasMore, loading, messages, messagesQueryKey, nextCursor, queryClient]);
 
   // Scroll to a specific message and highlight it
   const scrollToMessage = useCallback((messageId: string) => {
@@ -277,14 +289,42 @@ export default function ChatMessages({
 
   // Initial load and join room
   useEffect(() => {
-    fetchMessages();
+    const cachedResponse = queryClient.getQueryData<MessagesResponse>(messagesQueryKey);
+    let shouldFetch = true;
+
+    if (cachedResponse) {
+      const updatedAt = queryClient.getQueryState(messagesQueryKey)?.dataUpdatedAt ?? 0;
+      shouldFetch = Date.now() - updatedAt > CHAT_STALE_TIME;
+    } else {
+      const browserCache = readCachedMessages(currentUserId, conversationId);
+      if (browserCache) {
+        const normalizedMessages = browserCache.value.messages.map(normalizeMessage);
+
+        queryClient.setQueryData(messagesQueryKey, browserCache.value, {
+          updatedAt: browserCache.savedAt,
+        });
+        setMessages(normalizedMessages);
+        setHasMore(browserCache.value.hasMore);
+        setNextCursor(browserCache.value.nextCursor);
+        setLoading(false);
+        hasHydratedMessageCacheRef.current = true;
+        shouldFetch = !browserCache.isFresh;
+      }
+    }
+
+    if (shouldFetch) {
+      fetchMessages();
+    } else {
+      setLoading(false);
+    }
+
     joinChatRoom(conversationId);
     void syncReadState();
 
     return () => {
       leaveChatRoom(conversationId);
     };
-  }, [conversationId, fetchMessages, syncReadState]);
+  }, [conversationId, currentUserId, fetchMessages, messagesQueryKey, queryClient, syncReadState]);
 
   // Socket event listeners
   useEffect(() => {
@@ -930,17 +970,12 @@ function MessageBubble({
       {!isOwn && (
         <div className={cn('w-8 h-8 flex-shrink-0', !showAvatar && 'invisible')}>
           {showAvatar && (
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
-              {otherUser.profileImage ? (
-                <img
-                  src={otherUser.profileImage}
-                  alt={otherUser.name}
-                  className="w-8 h-8 rounded-full object-cover"
-                />
-              ) : (
-                otherUser.name.charAt(0).toUpperCase()
-              )}
-            </div>
+            <UserAvatar
+              imageSrc={otherUser.profileImage}
+              name={otherUser.name}
+              className="h-8 w-8 bg-gradient-to-br from-blue-400 to-purple-500 text-sm font-medium text-white"
+              fallbackClassName="text-sm"
+            />
           )}
         </div>
       )}
@@ -1151,13 +1186,12 @@ function MessageBubble({
                   {postData.author && (
                     <>
                       <div className="flex items-center gap-2 mb-1">
-                        {postData.author.profileImage && (
-                          <img 
-                            src={postData.author.profileImage} 
-                            alt={postData.author.name} 
-                            className="w-6 h-6 rounded-full object-cover"
-                          />
-                        )}
+                        <UserAvatar
+                          imageSrc={postData.author.profileImage}
+                          name={postData.author.name}
+                          className="h-6 w-6 text-[10px]"
+                          fallbackClassName="text-[10px]"
+                        />
                         <p className={cn('font-medium text-sm', isOwn ? 'text-white' : 'text-gray-900 dark:text-white')}>
                           {postData.author.name}
                         </p>

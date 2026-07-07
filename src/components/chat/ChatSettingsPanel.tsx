@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import {
   X,
   Image as ImageIcon,
@@ -147,17 +148,12 @@ export default function ChatSettingsPanel({
 
             {/* User Info */}
             <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex flex-col items-center">
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-2xl font-semibold mb-3">
-                {otherUser.profileImage ? (
-                  <img
-                    src={otherUser.profileImage}
-                    alt={otherUser.name}
-                    className="w-20 h-20 rounded-full object-cover"
-                  />
-                ) : (
-                  otherUser.name.charAt(0).toUpperCase()
-                )}
-              </div>
+              <UserAvatar
+                imageSrc={otherUser.profileImage}
+                name={otherUser.name}
+                className="mb-3 h-20 w-20 bg-gradient-to-br from-blue-400 to-purple-500 text-2xl font-semibold text-white"
+                fallbackClassName="text-2xl"
+              />
               <h3 className="text-xl font-semibold text-gray-900 dark:text-white">{otherUser.name}</h3>
               <p className="text-gray-500 dark:text-gray-400">@{otherUser.username}</p>
               {otherUser.isOnline && (

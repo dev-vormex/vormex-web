@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { matchingAPI, type SmartMatch } from '@/lib/api/matching';
 import { FIND_PEOPLE_STALE_TIME, queryKeys } from '@/lib/queryKeys';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 const GOAL_LABELS: Record<string, string> = {
   learn_coding: 'Coding & Tech',
@@ -107,13 +108,11 @@ export function SmartMatchesTab() {
             >
               {/* Avatar + Score */}
               <div className="relative flex-shrink-0">
-                <div className="w-12 h-12 rounded-full bg-gray-200 dark:bg-neutral-800 flex items-center justify-center overflow-hidden">
-                  {match.user.profileImage ? (
-                    <img src={match.user.profileImage} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="font-bold text-gray-500 dark:text-neutral-400">{match.user.name.charAt(0)}</span>
-                  )}
-                </div>
+                <UserAvatar
+                  imageSrc={match.user.profileImage}
+                  name={match.user.name}
+                  className="h-12 w-12 bg-gray-200 font-bold text-gray-500 dark:bg-neutral-800 dark:text-neutral-400"
+                />
                 <div className={`absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full flex items-center justify-center border-2 border-white dark:border-neutral-950 text-[8px] font-bold text-white ${
                   match.matchPercentage >= 60 ? 'bg-green-500' : match.matchPercentage >= 35 ? 'bg-blue-500' : 'bg-orange-500'
                 }`}>

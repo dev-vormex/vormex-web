@@ -1,13 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { UserPlus, ChevronRight, Check, Loader2 } from 'lucide-react';
 import { getPeopleFromSameCollege } from '@/lib/api/people';
 import { sendConnectionRequest } from '@/lib/api/connections';
 import Link from 'next/link';
-import type { PersonCard } from '@/lib/api/people';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 /**
  * PeopleFromYourCollege - "People from your college" card for home feed.
@@ -118,17 +117,12 @@ export default function PeopleFromYourCollege() {
             href={`/profile/${person.username}`}
             className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-neutral-800/50 transition-colors"
           >
-            {person.profileImage ? (
-              <img
-                src={person.profileImage}
-                alt={person.name}
-                className="w-10 h-10 rounded-full object-cover flex-shrink-0"
-              />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-neutral-700 flex items-center justify-center text-gray-500 dark:text-neutral-400 text-sm font-semibold flex-shrink-0">
-                {person.name.charAt(0)}
-              </div>
-            )}
+            <UserAvatar
+              imageSrc={person.profileImage}
+              name={person.name}
+              className="h-10 w-10 flex-shrink-0 bg-gray-200 text-sm font-semibold text-gray-500 dark:bg-neutral-700 dark:text-neutral-400"
+              fallbackClassName="text-sm"
+            />
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">

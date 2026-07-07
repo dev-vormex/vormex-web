@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import { InfiniteData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus } from 'lucide-react';
@@ -29,6 +30,7 @@ import { useVariableRewards } from '@/hooks/useVariableRewards';
 import { RewardCardRenderer } from '@/components/rewards';
 import { NotificationPrompt } from '@/components/notifications';
 import { ManagedAdCard } from '@/components/feed/ManagedAdCard';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import type { FeedResponse, Post, PollOption } from '@/types/post';
 import { FEED_STALE_TIME, queryKeys } from '@/lib/queryKeys';
 
@@ -399,11 +401,18 @@ export function Feed() {
       <div className="sticky top-0 z-40 border-b border-gray-200/70 bg-white/75 backdrop-blur-xl dark:border-neutral-800/80 dark:bg-neutral-950/75">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
-            <div>
-              <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-blue-600/80 dark:text-blue-300/80">
-                Home
-              </p>
-              <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Feed</h1>
+            <div className="flex items-center gap-2.5">
+              <Image
+                src="/logo.png"
+                alt="Vormex"
+                width={40}
+                height={40}
+                priority
+                className="h-10 w-10 rounded-xl object-contain"
+              />
+              <span className="text-lg font-bold tracking-tight text-gray-950 dark:text-white">
+                Vormex
+              </span>
             </div>
             {user && <SocialProofBar />}
           </div>
@@ -446,15 +455,12 @@ export function Feed() {
               className="w-full p-5 text-left transition-colors hover:bg-gray-50/90 dark:hover:bg-neutral-800/60"
             >
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-full overflow-hidden bg-gray-200 dark:bg-neutral-700 flex-shrink-0">
-                  {user.profileImage ? (
-                    <img src={user.profileImage} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-xl font-bold text-gray-500">
-                      {user.name?.charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                </div>
+                <UserAvatar
+                  imageSrc={user.profileImage}
+                  name={user.name}
+                  className="h-14 w-14 flex-shrink-0 bg-gray-200 text-xl font-bold text-gray-500 dark:bg-neutral-700"
+                  fallbackClassName="text-xl"
+                />
                 <div className="flex-1 py-3 px-5 rounded-full border border-gray-300 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800/50">
                   <span className="text-gray-500 dark:text-neutral-400 text-base">What&apos;s on your mind, {user.name?.split(' ')[0]}?</span>
                 </div>

@@ -8,6 +8,7 @@ import { getDailyMatches, type DailyMatch } from '@/lib/api/engagement';
 import { sendConnectionRequest } from '@/lib/api/connections';
 import Link from 'next/link';
 import { TodayMatchesSkeleton } from './TodayMatchesSkeleton';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 /**
  * TodayMatchesSection - Horizontal scrollable match cards at top of feed
@@ -176,17 +177,12 @@ function MatchCard({
           <div className="relative">
             <div className="w-[68px] h-[68px] rounded-full p-[2px] bg-gradient-to-br from-amber-400 to-orange-500">
               <div className="w-full h-full rounded-full border-2 border-white dark:border-neutral-900 overflow-hidden bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
-                {match.profileImage ? (
-                  <img
-                    src={match.profileImage}
-                    alt={match.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-xl font-bold text-gray-400">
-                    {match.name.charAt(0).toUpperCase()}
-                  </span>
-                )}
+                <UserAvatar
+                  imageSrc={match.profileImage}
+                  name={match.name}
+                  className="h-full w-full rounded-full text-xl font-bold text-gray-400"
+                  fallbackClassName="text-xl"
+                />
               </div>
             </div>
             {match.isOnline && (

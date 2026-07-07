@@ -6,7 +6,8 @@ export const FEED_STALE_TIME = 30 * 1000;
 export const PROFILE_STALE_TIME = 2 * 60 * 1000;
 export const ACTIVITY_STALE_TIME = 60 * 60 * 1000;
 export const FIND_PEOPLE_STALE_TIME = 5 * 60 * 1000;
-export const CHAT_STALE_TIME = 15 * 1000;
+export const CHAT_STALE_TIME = 2 * 60 * 1000;
+export const CHAT_GC_TIME = 60 * 60 * 1000;
 export const NOTIFICATION_STALE_TIME = 15 * 1000;
 
 export const queryKeys = {

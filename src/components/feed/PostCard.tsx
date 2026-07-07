@@ -38,6 +38,7 @@ import { EditPostModal } from './EditPostModal';
 import { LikeListModal } from './LikeListModal';
 import { ShareModal } from './ShareModal';
 import ReportModal from '@/components/reports/ReportModal';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import type { ReactionType, ReactionSummary as ReactionSummaryType } from '@/types/post';
 
 interface PostCardProps {
@@ -714,19 +715,12 @@ export function PostCard({
       {/* Header */}
       <div className="flex items-start justify-between p-4">
         <Link href={`/profile/${post.author.username}`} className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 dark:bg-neutral-700">
-            {post.author.profileImage ? (
-              <img
-                src={post.author.profileImage}
-                alt={post.author.name}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-lg font-bold text-gray-500">
-                {post.author.name.charAt(0).toUpperCase()}
-              </div>
-            )}
-          </div>
+          <UserAvatar
+            imageSrc={post.author.profileImage}
+            name={post.author.name}
+            className="h-12 w-12 bg-gray-200 text-lg font-bold text-gray-500 dark:bg-neutral-700"
+            fallbackClassName="text-lg"
+          />
           <div>
             <p className="font-semibold text-gray-900 dark:text-white hover:underline">
               {post.author.name}

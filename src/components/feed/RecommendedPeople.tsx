@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { matchingAPI } from '@/lib/api/matching';
 import { Zap, ChevronRight } from 'lucide-react';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 export function RecommendedPeople() {
   const router = useRouter();
@@ -75,13 +76,12 @@ export function RecommendedPeople() {
                     : 'bg-gradient-to-br from-blue-400 to-indigo-500'
                 }`}
               >
-                <div className="w-full h-full rounded-full border-2 border-white dark:border-neutral-900 bg-gray-100 dark:bg-neutral-800 flex items-center justify-center overflow-hidden">
-                  {match.user.profileImage ? (
-                    <img src={match.user.profileImage} alt={match.user.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="font-bold text-gray-400 text-xl">{match.user.name.charAt(0).toUpperCase()}</span>
-                  )}
-                </div>
+                <UserAvatar
+                  imageSrc={match.user.profileImage}
+                  name={match.user.name}
+                  className="h-full w-full border-2 border-white bg-gray-100 text-xl font-bold text-gray-400 dark:border-neutral-900 dark:bg-neutral-800"
+                  fallbackClassName="text-xl font-bold"
+                />
               </div>
 
               <span

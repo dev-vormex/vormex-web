@@ -4,10 +4,11 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserPlus, ChevronRight, X, MessageCircle, Check, Loader2 } from 'lucide-react';
 import { useQueries } from '@tanstack/react-query';
-import { getDailyMatches, getHiddenGem, type DailyMatch, type DailyMatchesResponse } from '@/lib/api/engagement';
+import { getDailyMatches, getHiddenGem, type DailyMatch } from '@/lib/api/engagement';
 import { sendConnectionRequest } from '@/lib/api/connections';
 import Link from 'next/link';
 import { PeopleYouMayKnowSkeleton } from './PeopleYouMayKnowSkeleton';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 const FEED_CACHE_OPTIONS = {
   staleTime: 5 * 60 * 1000,
@@ -119,17 +120,12 @@ export default function DailyMatchCard() {
             href={`/profile/${match.username}`}
             className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-neutral-800/50 transition-colors"
           >
-            {match.profileImage ? (
-              <img
-                src={match.profileImage}
-                alt={match.name}
-                className="w-10 h-10 rounded-full object-cover flex-shrink-0"
-              />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-neutral-700 flex items-center justify-center text-gray-500 dark:text-neutral-400 text-sm font-semibold flex-shrink-0">
-                {match.name.charAt(0)}
-              </div>
-            )}
+            <UserAvatar
+              imageSrc={match.profileImage}
+              name={match.name}
+              className="h-10 w-10 flex-shrink-0 bg-gray-200 text-sm font-semibold text-gray-500 dark:bg-neutral-700 dark:text-neutral-400"
+              fallbackClassName="text-sm"
+            />
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
@@ -171,17 +167,12 @@ export default function DailyMatchCard() {
           href={`/profile/${hiddenGem.match.username}`}
           className="flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-neutral-800/30 border-t border-gray-100 dark:border-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-800/60 transition-colors"
         >
-          {hiddenGem.match.profileImage ? (
-            <img
-              src={hiddenGem.match.profileImage}
-              alt={hiddenGem.match.name}
-              className="w-10 h-10 rounded-full object-cover flex-shrink-0"
-            />
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-neutral-700 flex items-center justify-center text-gray-500 dark:text-neutral-400 text-sm font-semibold flex-shrink-0">
-              {hiddenGem.match.name.charAt(0)}
-            </div>
-          )}
+          <UserAvatar
+            imageSrc={hiddenGem.match.profileImage}
+            name={hiddenGem.match.name}
+            className="h-10 w-10 flex-shrink-0 bg-gray-200 text-sm font-semibold text-gray-500 dark:bg-neutral-700 dark:text-neutral-400"
+            fallbackClassName="text-sm"
+          />
           <div className="flex-1 min-w-0">
             <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-0.5">{hiddenGem.message}</p>
             <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{hiddenGem.match.name}</p>

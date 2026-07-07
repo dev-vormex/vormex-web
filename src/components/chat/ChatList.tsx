@@ -13,7 +13,12 @@ import {
 import { initializeSocket } from '@/lib/socket';
 import { format, isToday, isThisWeek, isThisYear } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { queryKeys } from '@/lib/queryKeys';
+import { UserAvatar } from '@/components/ui/UserAvatar';
+import { CHAT_STALE_TIME, queryKeys } from '@/lib/queryKeys';
+import {
+  readCachedConversations,
+  writeCachedConversations,
+} from '@/lib/chat/browserCache';
 import {
   Check,
   CheckCheck,
@@ -150,10 +155,10 @@ export default function ChatList({
 }: ChatListProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const conversationsQueryKey = queryKeys.chatConversations(currentUserId);
   const cachedConversations = currentUserId
-    ? queryClient.getQueryData<ConversationsResponse>(
-        queryKeys.chatConversations(currentUserId)
-      )
+    ? queryClient.getQueryData<ConversationsResponse>(conversationsQueryKey) ??
+      readCachedConversations(currentUserId)?.value
     : undefined;
   const [conversations, setConversations] = useState<Conversation[]>(
     () => cachedConversations?.conversations ?? []
@@ -187,11 +192,14 @@ export default function ChatList({
     ) => {
       if (!currentUserId) return;
 
-      queryClient.setQueryData(queryKeys.chatConversations(currentUserId), {
+      const nextResponse = {
         conversations: nextConversations,
         hasMore: overrides?.hasMore ?? hasMoreRef.current,
         nextCursor: overrides?.nextCursor ?? nextCursorRef.current,
-      });
+      };
+
+      queryClient.setQueryData(queryKeys.chatConversations(currentUserId), nextResponse);
+      writeCachedConversations(currentUserId, nextResponse);
     },
     [currentUserId, queryClient]
   );
@@ -266,9 +274,23 @@ export default function ChatList({
       return;
     }
 
-    const cachedData = queryClient.getQueryData<ConversationsResponse>(
-      queryKeys.chatConversations(currentUserId)
-    );
+    const queryKey = queryKeys.chatConversations(currentUserId);
+    let shouldFetch = true;
+    let cachedData = queryClient.getQueryData<ConversationsResponse>(queryKey);
+
+    if (cachedData) {
+      const updatedAt = queryClient.getQueryState(queryKey)?.dataUpdatedAt ?? 0;
+      shouldFetch = Date.now() - updatedAt > CHAT_STALE_TIME;
+    } else {
+      const browserCache = readCachedConversations(currentUserId);
+      if (browserCache) {
+        cachedData = browserCache.value;
+        queryClient.setQueryData(queryKey, cachedData, {
+          updatedAt: browserCache.savedAt,
+        });
+        shouldFetch = !browserCache.isFresh;
+      }
+    }
 
     if (cachedData) {
       setConversations(cachedData.conversations);
@@ -279,7 +301,9 @@ export default function ChatList({
     }
 
     initializeSocket();
-    void fetchConversations(undefined, !!cachedData);
+    if (shouldFetch) {
+      void fetchConversations(undefined, !!cachedData);
+    }
   }, [currentUserId, fetchConversations, queryClient]);
 
   // Listen for new messages to update conversation list
@@ -555,17 +579,11 @@ function ConversationItem({
     >
       {/* Avatar */}
       <div className="relative flex-shrink-0">
-        <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-950/60 flex items-center justify-center text-blue-700 dark:text-blue-300 font-semibold overflow-hidden">
-          {other.profileImage ? (
-            <img
-              src={other.profileImage}
-              alt={other.name}
-              className="w-12 h-12 rounded-full object-cover"
-            />
-          ) : (
-            other.name.charAt(0).toUpperCase()
-          )}
-        </div>
+        <UserAvatar
+          imageSrc={other.profileImage}
+          name={other.name}
+          className="h-12 w-12 bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
+        />
         {/* Online indicator */}
         {other.isOnline && (
           <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full ring-2 ring-white dark:ring-neutral-900"></div>

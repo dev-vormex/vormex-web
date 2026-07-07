@@ -17,6 +17,7 @@ import type { Comment } from '@/types/post';
 import { getComments, createComment as apiCreateComment, searchUsersForMention, toggleCommentLike } from '@/lib/api/posts';
 import { joinPostRoom, leavePostRoom, getSocket } from '@/lib/socket';
 import { useAuth } from '@/lib/auth/useAuth';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import type { MentionUser } from '@/types/post';
 
 interface CommentsProps {
@@ -172,19 +173,12 @@ function CommentItem({ comment, postId, depth, highlightId, onReply }: CommentIt
         <div className="flex gap-3">
           {/* Avatar */}
           <Link href={`/profile/${comment.author.username}`} className="flex-shrink-0">
-            <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200 dark:bg-neutral-700">
-              {comment.author.profileImage ? (
-                <img
-                  src={comment.author.profileImage}
-                  alt={comment.author.name}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-sm font-bold text-gray-500">
-                  {(comment.author?.name?.charAt(0) ?? '?').toUpperCase()}
-                </div>
-              )}
-            </div>
+            <UserAvatar
+              imageSrc={comment.author.profileImage}
+              name={comment.author.name}
+              className="h-8 w-8 bg-gray-200 text-sm font-bold text-gray-500 dark:bg-neutral-700"
+              fallbackClassName="text-sm"
+            />
           </Link>
           
           {/* Content */}
@@ -667,11 +661,12 @@ export function Comments({ postId, isOpen, onClose, highlightCommentId, onCommen
                       onClick={() => insertMention(mentionUser)}
                       className="flex items-center gap-2 w-full px-4 py-2 hover:bg-gray-100 dark:hover:bg-neutral-700 transition-colors"
                     >
-                      <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200 dark:bg-neutral-600">
-                        {mentionUser.profileImage && (
-                          <img src={mentionUser.profileImage} alt="" className="w-full h-full object-cover" />
-                        )}
-                      </div>
+                      <UserAvatar
+                        imageSrc={mentionUser.profileImage}
+                        name={mentionUser.name}
+                        className="h-8 w-8 bg-gray-200 text-sm font-bold text-gray-500 dark:bg-neutral-600"
+                        fallbackClassName="text-sm"
+                      />
                       <div className="text-left">
                         <p className="text-sm font-medium text-gray-900 dark:text-white">{mentionUser.name}</p>
                         <p className="text-xs text-gray-500">@{mentionUser.username}</p>
@@ -682,15 +677,12 @@ export function Comments({ postId, isOpen, onClose, highlightCommentId, onCommen
               )}
               
               <div className="flex items-end gap-2">
-                <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200 dark:bg-neutral-700 flex-shrink-0">
-                  {user?.profileImage ? (
-                    <img src={user.profileImage} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-sm font-bold text-gray-500">
-                      {(user?.name?.charAt(0) ?? '?').toUpperCase()}
-                    </div>
-                  )}
-                </div>
+                <UserAvatar
+                  imageSrc={user?.profileImage}
+                  name={user?.name}
+                  className="h-8 w-8 flex-shrink-0 bg-gray-200 text-sm font-bold text-gray-500 dark:bg-neutral-700"
+                  fallbackClassName="text-sm"
+                />
                 
                 <textarea
                   ref={inputRef}

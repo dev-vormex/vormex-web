@@ -1,9 +1,13 @@
 'use client';
 
+/* eslint-disable @next/next/no-img-element */
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import ConnectionSentToast from '@/components/engagement/ConnectionSentToast';
+import { UserAvatar } from '@/components/ui/UserAvatar';
+import { resolveMediaUrl } from '@/lib/utils/media';
 import {
   GraduationCap,
   Users,
@@ -26,6 +30,28 @@ interface PersonCardProps {
   person: PersonCardType;
   onConnectionChange?: (personId: string, newStatus: string) => void;
   badgeLabel?: string;
+}
+
+function ProfileBanner({ imageSrc }: { imageSrc?: string | null }) {
+  const resolvedSrc = React.useMemo(() => resolveMediaUrl(imageSrc), [imageSrc]);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const failed = Boolean(resolvedSrc && failedSrc === resolvedSrc);
+
+  return (
+    <div className="relative h-16 overflow-hidden bg-gradient-to-r from-slate-100 via-gray-50 to-slate-100 dark:from-neutral-800 dark:via-neutral-800/70 dark:to-neutral-800">
+      {resolvedSrc && !failed && (
+        <img
+          src={resolvedSrc}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          onError={() => setFailedSrc(resolvedSrc)}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      )}
+    </div>
+  );
 }
 
 export function PersonCard({ person, onConnectionChange, badgeLabel }: PersonCardProps) {
@@ -229,32 +255,17 @@ export function PersonCard({ person, onConnectionChange, badgeLabel }: PersonCar
       className="flex flex-col bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
     >
       {/* Banner — subtle, professional */}
-      <div className="relative h-16 bg-gradient-to-r from-slate-100 via-gray-50 to-slate-100 dark:from-neutral-800 dark:via-neutral-800/70 dark:to-neutral-800">
-        {person.bannerImageUrl && (
-          <img
-            src={person.bannerImageUrl}
-            alt=""
-            className="w-full h-full object-cover"
-          />
-        )}
-      </div>
+      <ProfileBanner imageSrc={person.bannerImageUrl} />
 
       {/* Avatar — centered, overlapping banner */}
       <div className="flex justify-center">
         <Link href={`/profile/${person.username}`} className="relative -mt-10">
-          <div className="w-20 h-20 rounded-full ring-4 ring-white dark:ring-neutral-900 overflow-hidden bg-gray-100 dark:bg-neutral-800">
-            {person.profileImage ? (
-              <img
-                src={person.profileImage}
-                alt={person.name}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-2xl font-semibold text-gray-500 dark:text-neutral-400">
-                {person.name.charAt(0).toUpperCase()}
-              </div>
-            )}
-          </div>
+          <UserAvatar
+            imageSrc={person.profileImage}
+            name={person.name}
+            className="h-20 w-20 bg-gray-100 text-2xl font-semibold text-gray-500 ring-4 ring-white dark:bg-neutral-800 dark:text-neutral-400 dark:ring-neutral-900"
+            fallbackClassName="text-2xl"
+          />
           {person.isOnline && (
             <span
               className="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-green-500 ring-[3px] ring-white dark:ring-neutral-900"

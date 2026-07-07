@@ -4,7 +4,11 @@ import { startTransition, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth/useAuth';
-import { getConversations } from '@/lib/api/chat';
+import { getConversations, getMessages } from '@/lib/api/chat';
+import {
+  writeCachedConversations,
+  writeCachedMessages,
+} from '@/lib/chat/browserCache';
 import { matchingAPI } from '@/lib/api/matching';
 import { getPeople, getPeopleFromSameCollege, getSuggestions, getFilterOptions } from '@/lib/api/people';
 import { getProfile, getActivityYears } from '@/lib/api/profile';
@@ -75,13 +79,36 @@ export function AppWarmup() {
         })
       );
 
-      await safeWarm(() =>
-        queryClient.prefetchQuery({
+      await safeWarm(async () => {
+        const conversationsResponse = await queryClient.fetchQuery({
           queryKey: queryKeys.chatConversations(user.id),
           queryFn: () => getConversations(30),
           staleTime: CHAT_STALE_TIME,
-        })
-      );
+        });
+
+        writeCachedConversations(user.id, conversationsResponse);
+
+        if (shouldDelay) {
+          return;
+        }
+
+        const warmConversationBodies = conversationsResponse.conversations.slice(0, 3);
+        await Promise.all(
+          warmConversationBodies.map(async (conversation) => {
+            startTransition(() => {
+              router.prefetch(`/messages/${conversation.id}`);
+            });
+
+            const messagesResponse = await queryClient.fetchQuery({
+              queryKey: queryKeys.chatMessages(conversation.id),
+              queryFn: () => getMessages(conversation.id, 50),
+              staleTime: CHAT_STALE_TIME,
+            });
+
+            writeCachedMessages(user.id, conversation.id, messagesResponse);
+          })
+        );
+      });
 
       await safeWarm(() =>
         queryClient.prefetchQuery({

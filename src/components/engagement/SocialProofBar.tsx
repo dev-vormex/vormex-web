@@ -4,6 +4,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { getLiveActivity, type LiveActivity } from '@/lib/api/engagement';
 
+function buildActivityStats(activity: LiveActivity): string[] {
+  return [
+    `${activity.activeUsersNow ?? 0} ${(activity.activeUsersNow ?? 0) === 1 ? 'person' : 'people'} networking${activity.locationLabel ? ` ${activity.locationLabel}` : ''}`,
+    `${activity.newUsersToday ?? 0} new ${(activity.newUsersToday ?? 0) === 1 ? 'member' : 'members'} joined today`,
+  ];
+}
+
 /**
  * SocialProofBar - Subtle live activity ticker
  * Clean, minimal design — single line of text with a green dot
@@ -40,19 +47,19 @@ export default function SocialProofBar({ location }: { location?: string }) {
 
   useEffect(() => {
     if (!activity) return;
+    const statCount = buildActivityStats(activity).length;
+    if (statCount <= 1) return;
+
     const interval = setInterval(() => {
-      setCurrentStat((prev) => (prev + 1) % 3);
+      setCurrentStat((prev) => (prev + 1) % statCount);
     }, 5000);
     return () => clearInterval(interval);
   }, [activity]);
 
   if (!activity) return null;
 
-  const stats = [
-    `${activity.activeUsersNow ?? 0} ${(activity.activeUsersNow ?? 0) === 1 ? 'person' : 'people'} networking${activity.locationLabel ? ` ${activity.locationLabel}` : ''}`,
-    `${activity.connectionsToday ?? 0} connections made today`,
-    `${activity.newUsersToday ?? 0} new ${(activity.newUsersToday ?? 0) === 1 ? 'member' : 'members'} joined today`,
-  ];
+  const stats = buildActivityStats(activity);
+  const stat = stats[currentStat] ?? stats[0];
 
   return (
     <div className="flex items-center gap-2 px-1 py-1 overflow-hidden">
@@ -62,14 +69,14 @@ export default function SocialProofBar({ location }: { location?: string }) {
       </span>
       <AnimatePresence mode="wait">
         <motion.span
-          key={currentStat}
+          key={stat}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.25 }}
           className="text-xs text-gray-500 dark:text-neutral-400"
         >
-          {stats[currentStat]}
+          {stat}
         </motion.span>
       </AnimatePresence>
     </div>
