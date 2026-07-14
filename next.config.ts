@@ -3,7 +3,8 @@ import type { NextConfig } from "next";
 const backendUrl =
   process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/+$/, '') ||
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, '') ||
-  'http://localhost:5000';
+  // Local backend fallback kept for reference: 'http://localhost:5000'
+  'https://vormex-backend.onrender.com';
 
 const nextConfig: NextConfig = {
   /* config options here */

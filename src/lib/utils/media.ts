@@ -26,7 +26,8 @@ export function resolveMediaUrl(mediaUrl?: string | null): string | null {
     }
 
     if (process.env.NODE_ENV !== 'production') {
-      return `http://localhost:5000${trimmed}`;
+      // Previous local backend: `http://localhost:5000${trimmed}`
+      return `https://vormex-backend.onrender.com${trimmed}`;
     }
 
     return trimmed;
@@ -38,7 +39,8 @@ export function resolveMediaUrl(mediaUrl?: string | null): string | null {
     }
 
     if (process.env.NODE_ENV !== 'production') {
-      return `http://localhost:5000/${trimmed}`;
+      // Previous local backend: `http://localhost:5000/${trimmed}`
+      return `https://vormex-backend.onrender.com/${trimmed}`;
     }
   }
 

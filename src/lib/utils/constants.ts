@@ -22,9 +22,8 @@ function resolveApiUrl(): string {
     return normalizeApiUrl(publicBackendUrl);
   }
 
-  // Fall back to same-origin /api so local production builds and reverse-proxy deployments
-  // do not crash just because a public backend env var is absent.
-  return '/api';
+  // Previous local/reverse-proxy fallback: return '/api';
+  return 'https://vormex-backend.onrender.com/api';
 }
 
 export const API_URL = resolveApiUrl();
@@ -46,18 +45,9 @@ function resolveSocketUrl(): string {
     return normalizeOriginUrl(apiUrl.replace(/\/api\/?$/, ''));
   }
 
-  // In local development we often proxy REST through Next `/api` rewrites, but
-  // Socket.IO still needs the actual backend origin because websocket upgrades
-  // are not served by the frontend dev server.
-  if (process.env.NODE_ENV !== 'production') {
-    return 'http://localhost:5000';
-  }
-
-  if (typeof window !== 'undefined') {
-    return window.location.origin;
-  }
-
-  return isAbsoluteUrl(BACKEND_ORIGIN) ? BACKEND_ORIGIN : '';
+  // Previous local-development socket fallback:
+  // if (process.env.NODE_ENV !== 'production') return 'http://localhost:5000';
+  return 'https://vormex-backend.onrender.com';
 }
 
 export const SOCKET_URL = resolveSocketUrl();
