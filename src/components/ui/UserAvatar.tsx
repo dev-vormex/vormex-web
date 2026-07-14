@@ -47,6 +47,16 @@ function resolveImageSrc(imageSrc?: string | null): string | null {
     return trimmed;
   }
 
+  if (/^(uploads|profiles|avatars|images)\//i.test(trimmed)) {
+    if (/^https?:\/\//i.test(BACKEND_ORIGIN)) {
+      return `${BACKEND_ORIGIN}/${trimmed}`;
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      return `http://localhost:5000/${trimmed}`;
+    }
+  }
+
   return null;
 }
 
@@ -63,7 +73,6 @@ function AvatarImage({
   alt: string;
   imageClassName?: string;
 }) {
-  const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
 
   if (failed) return null;
@@ -73,11 +82,9 @@ function AvatarImage({
       src={src}
       alt={alt}
       draggable={false}
-      onLoad={() => setLoaded(true)}
       onError={() => setFailed(true)}
       className={cn(
-        'absolute inset-0 h-full w-full object-cover transition-opacity duration-150',
-        loaded ? 'opacity-100' : 'opacity-0',
+        'absolute inset-0 h-full w-full object-cover',
         imageClassName
       )}
     />

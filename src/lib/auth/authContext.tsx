@@ -3,7 +3,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import Cookies from 'js-cookie';
 import { authAPI } from '@/lib/api/auth';
-import { removeToken, getPendingUser } from './authHelpers';
+import {
+  removeToken,
+  getPendingUser,
+  readCachedUser,
+  writeCachedUser,
+  clearCachedUser,
+} from './authHelpers';
 import type { User, LoginCredentials, RegisterData, AuthResponse } from '@/types/auth';
 import { handleApiError } from '@/lib/utils/errorHandler';
 
@@ -37,12 +43,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (hasSession) {
           setTokenState('cookie');
           const pendingUser = getPendingUser();
-          if (pendingUser) {
-            setUser(pendingUser as any);
+          const cachedUser = pendingUser ?? readCachedUser();
+          if (cachedUser) {
+            // Render immediately from the last-known user and revalidate the
+            // session in the background instead of blocking first paint on
+            // the /me round-trip.
+            setUser(cachedUser as User);
+            setLoading(false);
           }
           try {
             const userData = await authAPI.getCurrentUser();
             setUser(userData);
+            writeCachedUser(userData);
             if (userData.onboardingCompleted) {
               Cookies.set('onboardingCompleted', 'true', { expires: 7 });
             }
@@ -53,6 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               Cookies.remove(AUTH_PRESENT_COOKIE);
               Cookies.remove(CSRF_COOKIE);
               removeToken();
+              clearCachedUser();
               setTokenState(null);
               setUser(null);
             }
@@ -92,8 +105,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         Cookies.remove('onboardingCompleted');
       }
-      
+
       setUser(response.user);
+      writeCachedUser(response.user);
       setTokenState('cookie');
     } catch (error) {
       throw new Error(handleApiError(error));
@@ -121,10 +135,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           sameSite: 'lax',
         });
         setUser(response.user);
+        writeCachedUser(response.user);
         setTokenState('cookie');
       } else {
         Cookies.remove(AUTH_PRESENT_COOKIE);
         Cookies.remove(CSRF_COOKIE);
+        clearCachedUser();
         setUser(null);
         setTokenState(null);
       }
@@ -142,6 +158,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     Cookies.remove(CSRF_COOKIE);
     Cookies.remove('onboardingCompleted');
     removeToken();
+    clearCachedUser();
     setUser(null);
     setTokenState(null);
   }, []);
@@ -169,11 +186,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     
     setUser(response.user);
+    writeCachedUser(response.user);
     setTokenState('cookie');
   }, []);
 
   const updateUser = useCallback((updatedUser: User) => {
     setUser(updatedUser);
+    writeCachedUser(updatedUser);
     if (updatedUser.onboardingCompleted) {
       Cookies.set('onboardingCompleted', 'true', { expires: 7 });
     }

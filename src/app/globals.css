@@ -96,6 +96,17 @@ body {
   font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
 }
 
+/*
+ * Keep the compact desktop density without zooming the layout viewport.
+ * CSS `zoom` also scales viewport units, leaving `100vh`/`100dvh` pages only
+ * 80% as tall as the browser and exposing the document background below them.
+ */
+@media (min-width: 1024px) {
+  html {
+    font-size: 80%;
+  }
+}
+
 /* Custom scrollbar for light and dark mode */
 ::-webkit-scrollbar {
   width: 8px;

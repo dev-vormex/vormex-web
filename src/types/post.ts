@@ -42,6 +42,10 @@ export interface PostAuthor {
   name: string;
   profileImage: string | null;
   headline?: string | null;
+  verified?: boolean;
+  isVerified?: boolean;
+  profileBadgeStyle?: string | null;
+  isPremium?: boolean;
 }
 
 export interface PollOption {
@@ -271,6 +275,12 @@ export interface MentionUser {
   username: string;
   name: string;
   profileImage: string | null;
+  avatar?: string | null;
+  headline?: string | null;
+  verified?: boolean;
+  isVerified?: boolean;
+  profileBadgeStyle?: string | null;
+  isPremium?: boolean;
 }
 
 export interface MentionNotification {

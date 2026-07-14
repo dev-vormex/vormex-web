@@ -48,6 +48,7 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { GitHubIntegration, MentionsDashboard } from '@/components/settings';
 import { useAuth } from '@/lib/auth/useAuth';
 import { useAgent } from '@/components/agent/AgentContext';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import { getPendingRequests } from '@/lib/api/connections';
 import { useLiveWalletXpBalance } from '@/hooks/useLiveGamification';
 import { getFeedTheme, setFeedTheme } from '@/lib/utils/feedTheme';
@@ -450,19 +451,12 @@ export default function MorePage() {
               {user && (
                 <div className="bg-white dark:bg-neutral-900 rounded-xl p-4 border border-gray-200 dark:border-neutral-800">
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center overflow-hidden">
-                      {user.profileImage ? (
-                        <img
-                          src={user.profileImage}
-                          alt={user.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-white font-bold text-xl">
-                          {user.name?.charAt(0) || '?'}
-                        </span>
-                      )}
-                    </div>
+                    <UserAvatar
+                      imageSrc={user.profileImage}
+                      name={user.name}
+                      className="h-14 w-14 bg-gradient-to-br from-blue-400 to-purple-500 text-xl font-bold text-white"
+                      fallbackClassName="text-xl"
+                    />
                     <div className="flex-1">
                       <h2 className="font-semibold text-gray-900 dark:text-white">
                         {user.name}

@@ -7,6 +7,7 @@ import { getPeopleFromSameCollege } from '@/lib/api/people';
 import { sendConnectionRequest } from '@/lib/api/connections';
 import Link from 'next/link';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { VerificationBadge } from '@/components/ui/VerificationBadge';
 
 /**
  * PeopleFromYourCollege - "People from your college" card for home feed.
@@ -129,6 +130,11 @@ export default function PeopleFromYourCollege() {
                 <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
                   {person.name}
                 </p>
+                <VerificationBadge
+                  profileBadgeStyle={person.profileBadgeStyle}
+                  isPremium={person.isPremium}
+                  size="small"
+                />
                 {person.isOnline && (
                   <span className="w-1.5 h-1.5 bg-green-500 rounded-full flex-shrink-0" />
                 )}

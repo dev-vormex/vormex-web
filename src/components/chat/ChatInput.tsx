@@ -155,6 +155,7 @@ export default function ChatInput({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastTypingEmitRef = useRef(0);
   const attachMenuRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -359,9 +360,16 @@ export default function ChatInput({
     };
   }, [showAttachMenu]);
 
-  // Handle typing indicator
+  // Handle typing indicator.
+  // Heartbeat instead of a single leading-edge emit: one emit can be silently
+  // dropped (socket not yet authenticated, reconnect), and the receiver
+  // auto-expires its indicator ~4.5s after the last "typing" event. Re-emitting
+  // every 2s while keystrokes continue keeps the indicator alive and
+  // self-heals dropped events.
   const handleTyping = useCallback(() => {
-    if (!isTyping) {
+    const now = Date.now();
+    if (now - lastTypingEmitRef.current >= 2000) {
+      lastTypingEmitRef.current = now;
       setIsTyping(true);
       sendChatTyping(conversationId, true);
     }
@@ -374,9 +382,10 @@ export default function ChatInput({
     // Set new timeout to stop typing indicator
     typingTimeoutRef.current = setTimeout(() => {
       setIsTyping(false);
+      lastTypingEmitRef.current = 0;
       sendChatTyping(conversationId, false);
-    }, 2000);
-  }, [conversationId, isTyping]);
+    }, 2500);
+  }, [conversationId]);
 
   // Clean up typing timeout
   useEffect(() => {
@@ -618,6 +627,7 @@ export default function ChatInput({
       typingTimeoutRef.current = null;
     }
     setIsTyping(false);
+    lastTypingEmitRef.current = 0;
     sendChatTyping(conversationId, false);
 
     // Update local message limit tracking

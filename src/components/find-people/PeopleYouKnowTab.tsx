@@ -1,6 +1,6 @@
 'use client';
 
-import { type ChangeEvent, useMemo, useRef, useState } from 'react';
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -146,6 +146,8 @@ export function PeopleYouKnowTab() {
   const [error, setError] = useState<string | null>(null);
   const [justFoundCount, setJustFoundCount] = useState<number | null>(null);
   const [shareLink, setShareLink] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(50);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   const { data = EMPTY_RESPONSE, isLoading } = useQuery({
     queryKey: ['people-you-know'],
@@ -319,6 +321,21 @@ export function PeopleYouKnowTab() {
   };
 
   const hasSavedResults = data.stats.totalContacts > 0;
+  const hasMoreSavedResults =
+    visibleCount < data.matched.length || visibleCount < data.invites.length;
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target || !hasMoreSavedResults) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setVisibleCount((count) => count + 50);
+      },
+      { rootMargin: '300px 0px' }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMoreSavedResults, visibleCount]);
 
   return (
     <div className="space-y-4">
@@ -507,7 +524,7 @@ export function PeopleYouKnowTab() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {data.matched.map((person) => (
+            {data.matched.slice(0, visibleCount).map((person) => (
               <PersonCard
                 key={person.id}
                 person={person}
@@ -542,7 +559,7 @@ export function PeopleYouKnowTab() {
           </div>
 
           <div className="space-y-3">
-            {data.invites.map((invite) => {
+            {data.invites.slice(0, visibleCount).map((invite) => {
               const invited = Boolean(invite.invitedAt);
               const isProcessing = processingInviteId === invite.id;
 
@@ -580,6 +597,18 @@ export function PeopleYouKnowTab() {
             })}
           </div>
         </section>
+      )}
+
+      {hasMoreSavedResults && (
+        <div ref={loadMoreRef} className="flex justify-center py-6">
+          <button
+            type="button"
+            onClick={() => setVisibleCount((count) => count + 50)}
+            className="rounded-full border border-gray-300 px-5 py-2 text-sm font-semibold text-gray-600 dark:border-neutral-700 dark:text-neutral-300"
+          >
+            Load next 50
+          </button>
+        </div>
       )}
     </div>
   );

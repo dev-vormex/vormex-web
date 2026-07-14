@@ -13,7 +13,6 @@ import {
   UserPlus,
   UserMinus,
   UserCheck,
-  CheckCircle2,
   Share2,
   MoreHorizontal,
   Camera,
@@ -32,6 +31,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import { getConnectionStatus, sendConnectionRequest, cancelConnectionRequest, removeConnection, acceptConnectionRequest } from '@/lib/api/connections';
 import { followUser, unfollowUser, getFollowStatus, getMutualInfo, type MutualInfo } from '@/lib/api/follow';
 import { getOrCreateConversation } from '@/lib/api/chat';
@@ -99,6 +99,7 @@ export function ProfileHeader({
   const [showToast, setShowToast] = useState(false);
   const [messageError, setMessageError] = useState<string | null>(null);
   const locationLabel = formatLocation(user.location);
+  const profileImageSrc = user.avatar ?? user.profileImage ?? null;
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
@@ -323,48 +324,17 @@ export function ProfileHeader({
               ─────────────────────────────────────────────────────────────────── */}
               <div className="absolute -top-14 sm:relative sm:top-0 left-4 sm:left-0 sm:-mt-24 flex-shrink-0">
                 <div className="relative">
-                  {/* Avatar with electric profile frame (matches gift card design) */}
+                  {/* Profile avatar */}
                   <div className="relative">
-                    {user.profileRing ? (
-                      <div className="relative w-28 h-28 sm:w-40 sm:h-40 lg:w-44 lg:h-44">
-                        <div
-                          className="absolute inset-0 rounded-full animate-[profile-frame-spin_8s_linear_infinite]"
-                          style={{
-                            background: user.profileRing === 'original'
-                              ? 'conic-gradient(from 0deg, #dd8448, #f59e0b, #dd8448, #b45309, #dd8448)'
-                              : 'conic-gradient(from 0deg, #3b82f6, #60a5fa, #2563eb, #1d4ed8, #3b82f6)',
-                            boxShadow: user.profileRing === 'original'
-                              ? '0 0 24px rgba(221,132,72,0.8), 0 0 48px rgba(221,132,72,0.4)'
-                              : '0 0 24px rgba(59,130,246,0.8), 0 0 48px rgba(59,130,246,0.4)',
-                          }}
-                        />
-                        <div className="absolute inset-[6px] rounded-full overflow-hidden bg-white dark:bg-neutral-900 shadow-inner">
-                          <UserAvatar
-                            imageSrc={user.avatar}
-                            name={user.name}
-                            className="h-full w-full rounded-full bg-gradient-to-br from-blue-600 to-blue-700 text-white"
-                            fallbackClassName="text-4xl sm:text-6xl"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="w-28 h-28 sm:w-40 sm:h-40 lg:w-44 lg:h-44 rounded-full overflow-hidden border-4 border-white dark:border-neutral-900 shadow-xl bg-white dark:bg-neutral-900">
-                        <UserAvatar
-                          imageSrc={user.avatar}
-                          name={user.name}
-                          className="h-full w-full rounded-full bg-gradient-to-br from-blue-600 to-blue-700 text-white"
-                          fallbackClassName="text-4xl sm:text-6xl"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Verified badge */}
-                  {user.verified && (
-                    <div className="absolute bottom-1 right-1 sm:bottom-2 sm:right-2 bg-blue-600 rounded-full p-1 sm:p-1.5 border-2 border-white dark:border-neutral-900 shadow-md">
-                      <CheckCircle2 className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
+                    <div className="w-28 h-28 sm:w-40 sm:h-40 lg:w-44 lg:h-44 rounded-full overflow-hidden border-4 border-white dark:border-neutral-900 shadow-xl bg-white dark:bg-neutral-900">
+                      <UserAvatar
+                        imageSrc={profileImageSrc}
+                        name={user.name}
+                        className="h-full w-full rounded-full bg-gradient-to-br from-blue-600 to-blue-700 text-white"
+                        fallbackClassName="text-4xl sm:text-6xl"
+                      />
                     </div>
-                  )}
+                  </div>
 
                   {/* Edit avatar button (owner only) */}
                   {isOwner && (
@@ -654,6 +624,11 @@ export function ProfileHeader({
                 <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">
                   {user.name}
                 </h1>
+                <VerificationBadge
+                  profileBadgeStyle={user.profileBadgeStyle}
+                  isPremium={user.isPremium}
+                  size="large"
+                />
                 {user.isOpenToOpportunities && (
                   <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                     #OpenToWork
@@ -925,7 +900,7 @@ export function ProfileHeader({
             onClose={() => setShowBlockModal(false)}
             userId={user.id}
             userName={user.name}
-            userImage={user.avatar}
+            userImage={profileImageSrc}
             onBlocked={() => {
               setConnectionStatus('blocked');
               setIsFollowing(false);

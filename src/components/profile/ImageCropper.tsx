@@ -4,6 +4,10 @@ import React, { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ZoomIn, ZoomOut, RotateCw, Check, RefreshCw } from 'lucide-react';
 
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 3;
+const ZOOM_STEP = 0.1;
+
 interface ImageCropperProps {
   imageSrc: string;
   aspectRatio: number; // width/height ratio (1 for avatar, 4 for banner)
@@ -12,13 +16,6 @@ interface ImageCropperProps {
   cropShape?: 'circle' | 'rectangle';
   minWidth?: number;
   minHeight?: number;
-}
-
-interface CropArea {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
 }
 
 export default function ImageCropper({
@@ -42,11 +39,11 @@ export default function ImageCropper({
   const [imageLoaded, setImageLoaded] = useState(false);
 
   const handleZoomIn = () => {
-    setZoom((prev) => Math.min(prev + 0.1, 3));
+    setZoom((prev) => Math.min(prev + ZOOM_STEP, MAX_ZOOM));
   };
 
   const handleZoomOut = () => {
-    setZoom((prev) => Math.max(prev - 0.1, 0.5));
+    setZoom((prev) => Math.max(prev - ZOOM_STEP, MIN_ZOOM));
   };
 
   const handleRotate = () => {
@@ -136,95 +133,39 @@ export default function ImageCropper({
       canvas.width = outputWidth;
       canvas.height = outputHeight;
 
-      // Clear canvas
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // Apply circular mask for avatar
-      if (cropShape === 'circle') {
-        ctx.beginPath();
-        ctx.arc(outputWidth / 2, outputHeight / 2, outputWidth / 2, 0, Math.PI * 2);
-        ctx.clip();
+      const cropArea = getCropAreaDimensions();
+      const renderedWidth = image.clientWidth;
+      const renderedHeight = image.clientHeight;
+
+      if (!renderedWidth || !renderedHeight) {
+        throw new Error('Image dimensions are unavailable');
       }
 
-      // Calculate the crop area based on zoom and position
-      const containerSize = Math.min(containerRef.current?.clientWidth || 400, containerRef.current?.clientHeight || 400);
-      const cropSize = aspectRatio >= 1 
-        ? { width: containerSize * 0.8, height: (containerSize * 0.8) / aspectRatio }
-        : { width: (containerSize * 0.8) * aspectRatio, height: containerSize * 0.8 };
-
-      // Save context state
-      ctx.save();
-      
-      // Move to center of canvas
+      // Reproduce the preview's CSS transform in crop-window coordinates.
+      // This makes the exported pixels match exactly what is visible inside
+      // the crop frame instead of resizing the entire source image.
       ctx.translate(outputWidth / 2, outputHeight / 2);
-      
-      // Apply rotation
-      ctx.rotate((rotation * Math.PI) / 180);
-      
-      // Calculate source dimensions
-      const naturalWidth = image.naturalWidth;
-      const naturalHeight = image.naturalHeight;
-      
-      // Calculate the visible portion of the image
-      const scaleX = naturalWidth / (image.width * zoom);
-      const scaleY = naturalHeight / (image.height * zoom);
-      
-      // Calculate source crop area
-      const srcX = (naturalWidth / 2) - (position.x * scaleX);
-      const srcY = (naturalHeight / 2) - (position.y * scaleY);
-      
-      // Draw the image
-      ctx.drawImage(
-        image,
-        -outputWidth / 2,
-        -outputHeight / 2,
-        outputWidth,
-        outputHeight
-      );
-      
-      // Restore context
-      ctx.restore();
-      
-      // Actually crop properly by redrawing with transforms
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      if (cropShape === 'circle') {
-        ctx.beginPath();
-        ctx.arc(outputWidth / 2, outputHeight / 2, outputWidth / 2, 0, Math.PI * 2);
-        ctx.clip();
-      }
-      
-      // Center the context
-      ctx.translate(outputWidth / 2, outputHeight / 2);
-      ctx.rotate((rotation * Math.PI) / 180);
+      ctx.scale(outputWidth / cropArea.width, outputHeight / cropArea.height);
+      ctx.translate(position.x, position.y);
       ctx.scale(zoom, zoom);
-      ctx.translate(position.x / zoom, position.y / zoom);
-      
-      // Draw image centered
-      const scale = Math.max(outputWidth / naturalWidth, outputHeight / naturalHeight);
-      const scaledWidth = naturalWidth * scale;
-      const scaledHeight = naturalHeight * scale;
-      
+      ctx.rotate((rotation * Math.PI) / 180);
       ctx.drawImage(
         image,
-        -scaledWidth / 2,
-        -scaledHeight / 2,
-        scaledWidth,
-        scaledHeight
+        -renderedWidth / 2,
+        -renderedHeight / 2,
+        renderedWidth,
+        renderedHeight
       );
 
-      // Convert to blob
-      canvas.toBlob(
-        (blob) => {
-          if (blob) {
-            onCropComplete(blob);
-          } else {
-            throw new Error('Failed to create image blob');
-          }
-        },
-        'image/jpeg',
-        0.95
-      );
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (result) => result ? resolve(result) : reject(new Error('Failed to create image blob')),
+          'image/jpeg',
+          0.95
+        );
+      });
+
+      onCropComplete(blob);
     } catch (error) {
       console.error('Crop error:', error);
       setIsProcessing(false);
@@ -235,12 +176,18 @@ export default function ImageCropper({
     setImageLoaded(true);
   };
 
+  const getCropAreaDimensions = () => {
+    const size = 280;
+    return {
+      width: aspectRatio >= 1 ? size : size * aspectRatio,
+      height: aspectRatio >= 1 ? size / aspectRatio : size,
+    };
+  };
+
   // Calculate crop area dimensions
   const getCropAreaStyle = (): React.CSSProperties => {
-    const size = 280;
-    const width = aspectRatio >= 1 ? size : size * aspectRatio;
-    const height = aspectRatio >= 1 ? size / aspectRatio : size;
-    
+    const { width, height } = getCropAreaDimensions();
+
     return {
       width: `${width}px`,
       height: `${height}px`,
@@ -337,20 +284,20 @@ export default function ImageCropper({
         <div className="flex items-center justify-between mt-4 px-2">
           {/* Zoom controls */}
           <div className="flex items-center gap-3">
-            <button
-              onClick={handleZoomOut}
-              disabled={zoom <= 0.5}
+              <button
+                onClick={handleZoomOut}
+                disabled={zoom <= MIN_ZOOM}
               className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ZoomOut className="w-5 h-5" />
             </button>
             
             <div className="flex items-center gap-2">
-              <input
-                type="range"
-                min="0.5"
-                max="3"
-                step="0.1"
+                <input
+                  type="range"
+                  min={MIN_ZOOM}
+                  max={MAX_ZOOM}
+                  step={ZOOM_STEP}
                 value={zoom}
                 onChange={(e) => setZoom(parseFloat(e.target.value))}
                 className="w-32 h-1 bg-gray-700 rounded-full appearance-none cursor-pointer
@@ -367,9 +314,9 @@ export default function ImageCropper({
               </span>
             </div>
             
-            <button
-              onClick={handleZoomIn}
-              disabled={zoom >= 3}
+              <button
+                onClick={handleZoomIn}
+                disabled={zoom >= MAX_ZOOM}
               className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ZoomIn className="w-5 h-5" />

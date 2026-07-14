@@ -13,6 +13,10 @@ export interface MentionUser {
   avatar?: string | null;
   profileImage?: string | null;
   headline: string | null;
+  verified?: boolean;
+  isVerified?: boolean;
+  profileBadgeStyle?: string | null;
+  isPremium?: boolean;
 }
 
 export interface MentionPost {

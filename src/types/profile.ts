@@ -6,6 +6,7 @@ export interface ProfileUser {
   name: string;
   email?: string; // Only included if viewing own profile
   avatar: string | null;
+  profileImage?: string | null;
   bannerImageUrl: string | null;
   headline: string | null;
   bio: string | null;
@@ -22,6 +23,9 @@ export interface ProfileUser {
   isOpenToOpportunities: boolean;
   profileVisibility: 'PUBLIC' | 'STUDENTS_ONLY' | 'CONNECTIONS';
   verified: boolean;
+  isVerified?: boolean;
+  profileBadgeStyle?: string | null;
+  isPremium?: boolean;
   interests: string[];
   profileRing?: string | null;
   hasClaimedWelcomeGift?: boolean;

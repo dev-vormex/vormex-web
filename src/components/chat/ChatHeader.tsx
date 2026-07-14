@@ -3,9 +3,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
-import { getSocket } from '@/lib/socket';
+import { checkUserStatus, getSocket, initializeSocket } from '@/lib/socket';
 import ReportModal from '@/components/reports/ReportModal';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import { MoreVertical, Flag, ArrowLeft, Phone, Video, Info } from 'lucide-react';
 
 interface ChatHeaderProps {
@@ -16,6 +17,10 @@ interface ChatHeaderProps {
     profileImage?: string | null;
     isOnline?: boolean;
     lastActiveAt?: string | null;
+    verified?: boolean;
+    isVerified?: boolean;
+    profileBadgeStyle?: string | null;
+    isPremium?: boolean;
   };
   conversationId: string;
   onBack?: () => void;
@@ -54,6 +59,23 @@ export default function ChatHeader({ user, conversationId, onBack, onInfo }: Cha
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Request fresh presence on mount and whenever the socket (re)authenticates,
+  // so "Online / last seen" doesn't wait for an online/offline transition.
+  useEffect(() => {
+    const socket = initializeSocket();
+
+    const requestStatus = () => {
+      checkUserStatus(user.id);
+    };
+
+    requestStatus();
+    socket.on('socket:authenticated', requestStatus);
+
+    return () => {
+      socket.off('socket:authenticated', requestStatus);
+    };
+  }, [user.id]);
+
   // Listen for online/offline status
   useEffect(() => {
     const socket = getSocket();
@@ -65,19 +87,19 @@ export default function ChatHeader({ user, conversationId, onBack, onInfo }: Cha
       }
     };
 
-    const handleOffline = (data: { userId: string }) => {
+    const handleOffline = (data: { userId: string; lastActiveAt?: string }) => {
       if (data.userId === user.id) {
         setIsOnline(false);
-        setLastActive(new Date().toISOString());
+        setLastActive(data.lastActiveAt ?? new Date().toISOString());
       }
     };
 
     // Handle immediate status update when joining chat
-    const handleStatus = (data: { userId: string; isOnline: boolean }) => {
+    const handleStatus = (data: { userId: string; isOnline: boolean; lastActiveAt?: string | null }) => {
       if (data.userId === user.id) {
         setIsOnline(data.isOnline);
         if (!data.isOnline) {
-          setLastActive(new Date().toISOString());
+          setLastActive(data.lastActiveAt ?? new Date().toISOString());
         }
       }
     };
@@ -123,9 +145,14 @@ export default function ChatHeader({ user, conversationId, onBack, onInfo }: Cha
       <div className="flex-1 min-w-0">
         <Link
           href={`/profile/${user.username}`}
-          className="text-sm font-semibold text-gray-900 dark:text-white hover:underline truncate block"
+          className="flex items-center gap-1.5 text-sm font-semibold text-gray-900 dark:text-white hover:underline"
         >
-          {user.name}
+          <span className="truncate">{user.name}</span>
+          <VerificationBadge
+            profileBadgeStyle={user.profileBadgeStyle}
+            isPremium={user.isPremium}
+            size="small"
+          />
         </Link>
         <p className="text-xs text-gray-500 dark:text-neutral-400">
           {isOnline ? (

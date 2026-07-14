@@ -2,14 +2,32 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
+import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { InfiniteData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus } from 'lucide-react';
 import { PostCard } from '@/components/feed/PostCard';
 import { PostCardSkeleton } from '@/components/feed/PostCardSkeleton';
-import { Comments } from '@/components/feed/Comments';
-import { CreatePostModal } from '@/components/feed/CreatePostModal';
-import { StoryCarousel, StoryViewer, StoryCreator } from '@/components/stories';
+import { StoryCarousel } from '@/components/stories/StoryCarousel';
+
+// Interaction-only overlays: loaded on demand so they stay out of the
+// critical home-page bundle and don't delay hydration/LCP.
+const Comments = dynamic(
+  () => import('@/components/feed/Comments').then((m) => m.Comments),
+  { ssr: false }
+);
+const CreatePostModal = dynamic(
+  () => import('@/components/feed/CreatePostModal').then((m) => m.CreatePostModal),
+  { ssr: false }
+);
+const StoryViewer = dynamic(
+  () => import('@/components/stories/StoryViewer').then((m) => m.StoryViewer),
+  { ssr: false }
+);
+const StoryCreator = dynamic(
+  () => import('@/components/stories/StoryCreator').then((m) => m.StoryCreator),
+  { ssr: false }
+);
 import { getFeed } from '@/lib/api/posts';
 import { type StoryGroup } from '@/lib/api/stories';
 import {
@@ -396,10 +414,10 @@ export function Feed() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto pb-24">
+    <>
       {/* Header */}
-      <div className="sticky top-0 z-40 border-b border-gray-200/70 bg-white/75 backdrop-blur-xl dark:border-neutral-800/80 dark:bg-neutral-950/75">
-        <div className="flex items-center justify-between px-4 py-3">
+      <div className="sticky top-0 z-40 w-full border-b border-gray-200/70 bg-white/75 backdrop-blur-xl dark:border-neutral-800/80 dark:bg-neutral-950/75">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2.5">
               <Image
@@ -420,6 +438,7 @@ export function Feed() {
         </div>
       </div>
 
+      <div className="mx-auto max-w-6xl pb-24">
       {user && (
         <motion.section
           initial={{ opacity: 0, y: 16 }}
@@ -644,11 +663,13 @@ export function Feed() {
       </button>
 
       {/* Create Post Modal */}
-      <CreatePostModal
-        isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onPostCreated={handlePostCreated}
-      />
+      {showCreateModal && (
+        <CreatePostModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onPostCreated={handlePostCreated}
+        />
+      )}
 
       {/* Comments Panel */}
       {selectedPostForComments && (
@@ -674,14 +695,16 @@ export function Feed() {
       )}
 
       {/* Story Creator Modal */}
-      <StoryCreator
-        isOpen={showStoryCreator}
-        onClose={() => setShowStoryCreator(false)}
-        onStoryCreated={() => {
-          setShowStoryCreator(false);
-          queryClient.invalidateQueries({ queryKey: queryKeys.stories(user?.id) });
-        }}
-      />
+      {showStoryCreator && (
+        <StoryCreator
+          isOpen={showStoryCreator}
+          onClose={() => setShowStoryCreator(false)}
+          onStoryCreated={() => {
+            setShowStoryCreator(false);
+            queryClient.invalidateQueries({ queryKey: queryKeys.stories(user?.id) });
+          }}
+        />
+      )}
 
       {/* Story Viewer */}
       {showStoryViewer && selectedStoryGroup && (
@@ -706,7 +729,8 @@ export function Feed() {
 
       {/* Push Notification Permission Prompt */}
       <NotificationPrompt userId={user?.id} />
-    </div>
+      </div>
+    </>
   );
 }
 

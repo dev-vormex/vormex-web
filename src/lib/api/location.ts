@@ -38,6 +38,9 @@ export interface NearbyUser {
 
 export interface NearbyUsersResponse {
   users: NearbyUser[];
+  total?: number;
+  page?: number;
+  hasMore?: boolean;
   locationRequired: boolean;
   message?: string;
   userLocation?: {
@@ -95,9 +98,10 @@ export async function getNearbyUsers(
   limit: number = 20,
   lat?: number,
   lng?: number,
-  search?: string
+  search?: string,
+  page: number = 1
 ): Promise<NearbyUsersResponse> {
-  const params: Record<string, string | number> = { radius, limit };
+  const params: Record<string, string | number> = { radius, limit, page };
   if (lat != null && lng != null) {
     params.lat = lat;
     params.lng = lng;

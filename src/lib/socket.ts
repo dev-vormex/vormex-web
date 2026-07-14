@@ -7,11 +7,14 @@ import type { ChatUser, Message } from '@/lib/api/chat';
 let socket: Socket | null = null;
 let lifecycleHandlersRegistered = false;
 let socketAuthenticated = false;
+let authenticatedUserId: string | null = null;
 const joinedChatRooms = new Set<string>();
 let feedRoomJoined = false;
 const CHAT_CONNECT_GRACE_MS = 1500;
 const CHAT_AUTH_GRACE_MS = 2500;
 const CHAT_SEND_ACK_TIMEOUT_MS = 8000;
+const DELIVERED_ACK_CACHE_LIMIT = 200;
+const acknowledgedDeliveredMessageIds = new Set<string>();
 
 // Reaction types matching backend enum
 export type ReactionType = 'LIKE' | 'CELEBRATE' | 'SUPPORT' | 'INSIGHTFUL' | 'CURIOUS';
@@ -237,6 +240,36 @@ function waitForSocketReady(
   });
 }
 
+/**
+ * Acknowledge delivery of a chat message addressed to the authenticated user.
+ * Deduped per messageId so reconnects/duplicate events don't re-emit.
+ */
+function acknowledgeMessageDelivered(
+  sock: Socket,
+  conversationId?: string,
+  message?: Message
+): void {
+  if (!conversationId || !message?.id || !authenticatedUserId) {
+    return;
+  }
+
+  if (message.receiverId !== authenticatedUserId || message.senderId === authenticatedUserId) {
+    return;
+  }
+
+  if (acknowledgedDeliveredMessageIds.has(message.id)) {
+    return;
+  }
+
+  acknowledgedDeliveredMessageIds.add(message.id);
+  if (acknowledgedDeliveredMessageIds.size > DELIVERED_ACK_CACHE_LIMIT) {
+    const first = acknowledgedDeliveredMessageIds.values().next().value;
+    if (first !== undefined) acknowledgedDeliveredMessageIds.delete(first);
+  }
+
+  sock.emit('chat:delivered', { conversationId, messageId: message.id });
+}
+
 function ensureSocketLifecycle(sock: Socket): void {
   if (lifecycleHandlersRegistered) {
     return;
@@ -253,11 +286,24 @@ function ensureSocketLifecycle(sock: Socket): void {
     }
   });
 
-  sock.on('socket:authenticated', () => {
+  sock.on('socket:authenticated', (data?: { userId?: string }) => {
     socketAuthenticated = true;
+    if (data?.userId) {
+      authenticatedUserId = data.userId;
+    }
     joinedChatRooms.forEach((conversationId) => {
       sock.emit('chat:join', { conversationId });
     });
+  });
+
+  // Delivered acks: whenever a message addressed to the current user arrives,
+  // tell the server so the sender's ticks flip from SENT to DELIVERED.
+  sock.on('chat:new_message', (data?: { conversationId?: string; message?: Message }) => {
+    acknowledgeMessageDelivered(sock, data?.conversationId, data?.message);
+  });
+
+  sock.on('chat:notification', (data?: { conversationId?: string; message?: Message }) => {
+    acknowledgeMessageDelivered(sock, data?.conversationId, data?.message);
   });
 
   sock.on('socket:unauthenticated', () => {
@@ -403,6 +449,8 @@ export function disconnectSocket(): void {
     socket = null;
     lifecycleHandlersRegistered = false;
     socketAuthenticated = false;
+    authenticatedUserId = null;
+    acknowledgedDeliveredMessageIds.clear();
     joinedChatRooms.clear();
   }
 }
@@ -565,6 +613,17 @@ export function sendChatTyping(conversationId: string, isTyping: boolean): void 
 }
 
 /**
+ * Request fresh presence for a chat peer; server replies with `user:status`
+ * to this socket only.
+ */
+export function checkUserStatus(userId: string): void {
+  const sock = getOrCreateSocket();
+  if (sock.connected && socketAuthenticated) {
+    sock.emit('user:check_status', { userId });
+  }
+}
+
+/**
  * Mark chat messages as read
  */
 export function markChatAsRead(conversationId: string): void {
@@ -683,6 +742,7 @@ const socketApi = {
   leaveChatRoom,
   sendChatMessage,
   sendChatTyping,
+  checkUserStatus,
   markChatAsRead,
   deleteChatMessage,
   editChatMessage,

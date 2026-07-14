@@ -11,6 +11,10 @@ export interface ChatUser {
   profileImage: string | null;
   isOnline: boolean;
   lastActiveAt: string | null;
+  verified?: boolean;
+  isVerified?: boolean;
+  profileBadgeStyle?: string | null;
+  isPremium?: boolean;
 }
 
 export interface Message {
@@ -26,10 +30,11 @@ export interface Message {
   fileName?: string;
   fileSize?: number;
   status: 'SENT' | 'DELIVERED' | 'READ';
-  deliveredAt?: string;
+  deliveredAt?: string | null;
   readAt?: string;
+  editedAt?: string | null;
   isDeleted: boolean;
-  isEdited?: boolean; // Client-side flag to track if message was edited
+  isEdited?: boolean; // Server-provided; true only when the sender explicitly edited
   replyToId?: string;
   replyTo?: {
     id: string;

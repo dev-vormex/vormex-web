@@ -164,26 +164,27 @@ export function AppWarmup() {
     const shouldDelay =
       connection?.saveData || connection?.effectiveType?.includes('2g');
 
-    const routeTimeoutId = window.setTimeout(warmRoutes, 120);
     let queryTimeoutId: number | undefined;
     let idleId: number | undefined;
 
+    // Warm routes and queries only once the browser is idle so prefetches
+    // (notably /reels, which pulls large media chunks) never compete with
+    // the initial feed request and LCP.
     if (idleWindow.requestIdleCallback && !shouldDelay) {
       idleId = idleWindow.requestIdleCallback(() => {
+        warmRoutes();
         void warmQueries();
-      }, { timeout: 4000 });
+      }, { timeout: 6000 });
     } else {
       queryTimeoutId = window.setTimeout(() => {
+        warmRoutes();
         void warmQueries();
-      }, shouldDelay ? 2200 : 900);
+      }, shouldDelay ? 3500 : 2000);
     }
 
     return () => {
       if (idleId !== undefined) {
         idleWindow.cancelIdleCallback?.(idleId);
-      }
-      if (routeTimeoutId !== undefined) {
-        window.clearTimeout(routeTimeoutId);
       }
       if (queryTimeoutId !== undefined) {
         window.clearTimeout(queryTimeoutId);

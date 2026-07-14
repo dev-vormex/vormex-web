@@ -18,6 +18,7 @@ import { getComments, createComment as apiCreateComment, searchUsersForMention, 
 import { joinPostRoom, leavePostRoom, getSocket } from '@/lib/socket';
 import { useAuth } from '@/lib/auth/useAuth';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import type { MentionUser } from '@/types/post';
 
 interface CommentsProps {
@@ -186,9 +187,14 @@ function CommentItem({ comment, postId, depth, highlightId, onReply }: CommentIt
             <div className="bg-gray-100 dark:bg-neutral-800 rounded-2xl px-4 py-2">
               <Link
                 href={`/profile/${comment.author.username}`}
-                className="font-semibold text-sm text-gray-900 dark:text-white hover:underline"
+                className="inline-flex items-center gap-1 font-semibold text-sm text-gray-900 dark:text-white hover:underline"
               >
-                {comment.author.name}
+                <span>{comment.author.name}</span>
+                <VerificationBadge
+                  profileBadgeStyle={comment.author.profileBadgeStyle}
+                  isPremium={comment.author.isPremium}
+                  size="micro"
+                />
               </Link>
               <p className="text-sm text-gray-700 dark:text-neutral-300 whitespace-pre-wrap">
                 {parseContent(comment.content)}

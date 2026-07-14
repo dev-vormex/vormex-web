@@ -24,6 +24,19 @@ interface ImageUploadModalProps {
   onImageUpdated: (imageUrl: string) => void;
 }
 
+function getUploadErrorMessage(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const response = (error as { response?: { data?: { error?: unknown } } }).response;
+    if (typeof response?.data?.error === 'string') {
+      return response.data.error;
+    }
+  }
+
+  return error instanceof Error && error.message
+    ? error.message
+    : 'Failed to upload image';
+}
+
 export function ImageUploadModal({
   isOpen,
   onClose,
@@ -83,10 +96,15 @@ export function ImageUploadModal({
   }, [maxSize]);
 
   const handleCropComplete = useCallback((croppedBlob: Blob) => {
-    // Convert blob to file
+    // The cropper always encodes JPEG data, so the filename must also use a
+    // JPEG extension. Keeping the source extension (for example, .png) makes
+    // the upload's filename contradict its MIME type and fails server-side
+    // upload validation.
+    const sourceName = selectedFile?.name || 'cropped-image';
+    const nameWithoutExtension = sourceName.replace(/\.[^/.]+$/, '') || 'cropped-image';
     const croppedFile = new File(
       [croppedBlob],
-      selectedFile?.name || 'cropped-image.jpg',
+      `${nameWithoutExtension}.jpg`,
       { type: 'image/jpeg' }
     );
 
@@ -163,9 +181,9 @@ export function ImageUploadModal({
 
       onImageUpdated(imageUrl);
       handleClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Upload error:', err);
-      setError(err.response?.data?.error || err.message || 'Failed to upload image');
+      setError(getUploadErrorMessage(err));
     } finally {
       setUploading(false);
     }

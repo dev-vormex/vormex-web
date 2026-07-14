@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import ConnectionSentToast from '@/components/engagement/ConnectionSentToast';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import { resolveMediaUrl } from '@/lib/utils/media';
 import {
   GraduationCap,
@@ -278,8 +279,13 @@ export function PersonCard({ person, onConnectionChange, badgeLabel }: PersonCar
       {/* Info — centered */}
       <div className="flex flex-col flex-1 items-center text-center px-4 pt-2 pb-4">
         <Link href={`/profile/${person.username}`} className="group/name">
-          <h3 className="font-semibold text-base text-gray-900 dark:text-white group-hover/name:underline underline-offset-2">
-            {person.name}
+          <h3 className="inline-flex max-w-full items-center justify-center gap-1.5 font-semibold text-base text-gray-900 dark:text-white group-hover/name:underline underline-offset-2">
+            <span className="truncate">{person.name}</span>
+            <VerificationBadge
+              profileBadgeStyle={person.profileBadgeStyle}
+              isPremium={person.isPremium}
+              size="small"
+            />
           </h3>
         </Link>
         <p className="text-xs text-gray-500 dark:text-neutral-400">@{person.username}</p>

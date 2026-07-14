@@ -17,6 +17,10 @@ export interface PersonCard {
   skills: string[];
   interests: string[];
   isOnline: boolean;
+  verified?: boolean;
+  isVerified?: boolean;
+  profileBadgeStyle?: string | null;
+  isPremium?: boolean;
   connectionStatus: 'none' | 'pending_sent' | 'pending_received' | 'connected';
   mutualConnections?: number;
 }
@@ -35,6 +39,7 @@ export interface PeopleFilters {
 export interface PeoplePagination {
   page?: number;
   limit?: number;
+  cursor?: string;
 }
 
 export interface PeopleResponse {
@@ -43,6 +48,22 @@ export interface PeopleResponse {
   page: number;
   totalPages: number;
   hasMore: boolean;
+  nextCursor?: string | null;
+}
+
+export interface PeopleSectionResponse {
+  people: PersonCard[];
+  total?: number;
+  page?: number;
+  totalPages?: number;
+  hasMore?: boolean;
+}
+
+export interface SuggestionsResponse {
+  suggestions: PersonCard[];
+  total?: number;
+  page?: number;
+  hasMore?: boolean;
 }
 
 export interface FilterOptions {
@@ -105,6 +126,7 @@ export async function getPeople(
   
   if (pagination?.page) params.append('page', pagination.page.toString());
   if (pagination?.limit) params.append('limit', pagination.limit.toString());
+  if (pagination?.cursor) params.append('cursor', pagination.cursor);
   
   return apiClient.get(`/people?${params.toString()}`);
 }
@@ -112,15 +134,21 @@ export async function getPeople(
 /**
  * Get personalized suggestions (People You May Know)
  */
-export async function getSuggestions(limit: number = 10): Promise<{ suggestions: PersonCard[] }> {
-  return apiClient.get(`/people/suggestions?limit=${limit}`);
+export async function getSuggestions(
+  limit: number = 10,
+  page: number = 1
+): Promise<SuggestionsResponse> {
+  return apiClient.get(`/people/suggestions?limit=${limit}&page=${page}`);
 }
 
 /**
  * Get people from the same college
  */
-export async function getPeopleFromSameCollege(limit: number = 10): Promise<{ people: PersonCard[] }> {
-  return apiClient.get(`/people/same-college?limit=${limit}`);
+export async function getPeopleFromSameCollege(
+  limit: number = 10,
+  page: number = 1
+): Promise<PeopleSectionResponse> {
+  return apiClient.get(`/people/same-college?limit=${limit}&page=${page}`);
 }
 
 /**
@@ -168,6 +196,10 @@ export interface SearchUser {
   name: string;
   profileImage: string | null;
   headline: string | null;
+  verified?: boolean;
+  isVerified?: boolean;
+  profileBadgeStyle?: string | null;
+  isPremium?: boolean;
 }
 
 /**
@@ -181,5 +213,9 @@ export async function searchUsers(query: string, limit: number = 10): Promise<Se
     name: p.name,
     profileImage: p.profileImage,
     headline: p.headline,
+    verified: p.verified,
+    isVerified: p.isVerified,
+    profileBadgeStyle: p.profileBadgeStyle,
+    isPremium: p.isPremium,
   }));
 }

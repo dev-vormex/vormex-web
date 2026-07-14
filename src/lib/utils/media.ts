@@ -32,5 +32,15 @@ export function resolveMediaUrl(mediaUrl?: string | null): string | null {
     return trimmed;
   }
 
+  if (/^(uploads|profiles|avatars|images)\//i.test(trimmed)) {
+    if (/^https?:\/\//i.test(BACKEND_ORIGIN)) {
+      return `${BACKEND_ORIGIN}/${trimmed}`;
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      return `http://localhost:5000/${trimmed}`;
+    }
+  }
+
   return null;
 }

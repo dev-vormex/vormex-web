@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/useAuth';
 
@@ -22,8 +23,15 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-neutral-950">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-          <p className="mt-4 text-gray-600 dark:text-neutral-400">Loading...</p>
+          <Image
+            src="/logo.png"
+            alt="Vormex"
+            width={72}
+            height={72}
+            priority
+            className="mx-auto h-18 w-18 rounded-2xl object-contain"
+          />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mt-6"></div>
         </div>
       </div>
     );
@@ -35,4 +43,3 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   return <>{children}</>;
 }
-

@@ -9,6 +9,7 @@ import { sendConnectionRequest } from '@/lib/api/connections';
 import Link from 'next/link';
 import { PeopleYouMayKnowSkeleton } from './PeopleYouMayKnowSkeleton';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { VerificationBadge } from '@/components/ui/VerificationBadge';
 
 const FEED_CACHE_OPTIONS = {
   staleTime: 5 * 60 * 1000,
@@ -130,6 +131,11 @@ export default function DailyMatchCard() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{match.name}</p>
+                <VerificationBadge
+                  profileBadgeStyle={match.profileBadgeStyle}
+                  isPremium={match.isPremium}
+                  size="small"
+                />
                 {match.isOnline && (
                   <span className="w-1.5 h-1.5 bg-green-500 rounded-full flex-shrink-0" />
                 )}
@@ -175,7 +181,14 @@ export default function DailyMatchCard() {
           />
           <div className="flex-1 min-w-0">
             <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-0.5">{hiddenGem.message}</p>
-            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{hiddenGem.match.name}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{hiddenGem.match.name}</p>
+              <VerificationBadge
+                profileBadgeStyle={hiddenGem.match.profileBadgeStyle}
+                isPremium={hiddenGem.match.isPremium}
+                size="small"
+              />
+            </div>
             <p className="text-xs text-gray-500 dark:text-neutral-400 truncate">{hiddenGem.match.headline || hiddenGem.match.college}</p>
           </div>
           <ConnectButton userId={hiddenGem.match.id} />

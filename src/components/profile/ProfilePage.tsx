@@ -120,7 +120,7 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
   const handleAvatarUpdated = (avatarUrl: string) => {
     updateProfileState((currentProfile) => ({
       ...currentProfile,
-      user: { ...currentProfile.user, avatar: avatarUrl },
+      user: { ...currentProfile.user, avatar: avatarUrl, profileImage: avatarUrl },
     }));
   };
 

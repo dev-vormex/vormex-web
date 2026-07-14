@@ -2,18 +2,21 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getConversations,
+  getOrCreateConversation,
   type ChatUser,
   type Conversation,
   type ConversationsResponse,
   type Message,
 } from '@/lib/api/chat';
+import { searchUsersForMention, type MentionUser } from '@/lib/api/mentions';
 import { initializeSocket } from '@/lib/socket';
 import { format, isToday, isThisWeek, isThisYear } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import { CHAT_STALE_TIME, queryKeys } from '@/lib/queryKeys';
 import {
   readCachedConversations,
@@ -30,6 +33,11 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import Link from 'next/link';
+
+const TYPING_INDICATOR_TIMEOUT_MS = 4000;
+const PEOPLE_SEARCH_DEBOUNCE_MS = 300;
+const PEOPLE_SEARCH_MIN_LENGTH = 2;
+const PEOPLE_SEARCH_LIMIT = 8;
 
 interface ChatListProps {
   selectedConversationId?: string;
@@ -169,9 +177,19 @@ export default function ChatList({
   const [nextCursor, setNextCursor] = useState<string | undefined>(
     () => cachedConversations?.nextCursor
   );
+  const [typingConversationIds, setTypingConversationIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  // Server-backed people search: conversations filter instantly client-side,
+  // then the rest of the app's users are searched with a debounce so we make
+  // at most ~3 requests/second while typing. Results are cached by query text
+  // (React Query here, Redis on the server).
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [startingChatUserId, setStartingChatUserId] = useState<string | null>(null);
   const conversationCountRef = useRef(conversations.length);
   const hasMoreRef = useRef(hasMore);
   const nextCursorRef = useRef(nextCursor);
+  const typingTimeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   useEffect(() => {
     conversationCountRef.current = conversations.length;
@@ -429,6 +447,105 @@ export default function ChatList({
     };
   }, [currentUserId, fetchConversations, selectedConversationId, setConversationState]);
 
+  // Listen for typing indicators and live presence to keep conversation rows fresh
+  useEffect(() => {
+    const socket = initializeSocket();
+    const typingTimeouts = typingTimeoutsRef.current;
+
+    const clearTypingTimeout = (conversationId: string) => {
+      const timeout = typingTimeouts.get(conversationId);
+      if (timeout) {
+        clearTimeout(timeout);
+        typingTimeouts.delete(conversationId);
+      }
+    };
+
+    const stopTyping = (conversationId: string) => {
+      clearTypingTimeout(conversationId);
+      setTypingConversationIds((previousIds) => {
+        if (!previousIds.has(conversationId)) {
+          return previousIds;
+        }
+        const nextIds = new Set(previousIds);
+        nextIds.delete(conversationId);
+        return nextIds;
+      });
+    };
+
+    const handleUserTyping = (data: {
+      conversationId: string;
+      userId: string;
+      isTyping: boolean;
+    }) => {
+      if (!data?.conversationId || data.userId === currentUserId) {
+        return;
+      }
+
+      if (!data.isTyping) {
+        stopTyping(data.conversationId);
+        return;
+      }
+
+      // Safety timeout in case the stop event never arrives
+      clearTypingTimeout(data.conversationId);
+      typingTimeouts.set(
+        data.conversationId,
+        setTimeout(() => stopTyping(data.conversationId), TYPING_INDICATOR_TIMEOUT_MS)
+      );
+
+      setTypingConversationIds((previousIds) => {
+        if (previousIds.has(data.conversationId)) {
+          return previousIds;
+        }
+        const nextIds = new Set(previousIds);
+        nextIds.add(data.conversationId);
+        return nextIds;
+      });
+    };
+
+    const applyPresence = (userId: string, isOnline: boolean, lastActiveAt?: string) => {
+      setConversationState((previousConversations) => {
+        let changed = false;
+        const nextConversations = previousConversations.map((conversation) => {
+          const other = conversation.otherParticipant;
+          if (other?.id !== userId || other.isOnline === isOnline) {
+            return conversation;
+          }
+          changed = true;
+          return {
+            ...conversation,
+            otherParticipant: {
+              ...other,
+              isOnline,
+              lastActiveAt: lastActiveAt ?? other.lastActiveAt,
+            },
+          };
+        });
+        return changed ? nextConversations : previousConversations;
+      });
+    };
+
+    const handleUserOnline = (data: { userId: string; lastActiveAt?: string }) => {
+      applyPresence(data.userId, true, data.lastActiveAt);
+    };
+
+    const handleUserOffline = (data: { userId: string; lastActiveAt?: string }) => {
+      applyPresence(data.userId, false, data.lastActiveAt);
+    };
+
+    socket.on('chat:user_typing', handleUserTyping);
+    socket.on('user:online', handleUserOnline);
+    socket.on('user:offline', handleUserOffline);
+
+    return () => {
+      socket.off('chat:user_typing', handleUserTyping);
+      socket.off('user:online', handleUserOnline);
+      socket.off('user:offline', handleUserOffline);
+      typingTimeouts.forEach((timeout) => clearTimeout(timeout));
+      typingTimeouts.clear();
+    };
+  }, [currentUserId, setConversationState]);
+
   const handleSelectConversation = (conversation: Conversation) => {
     setConversationState((previousConversations) =>
       previousConversations.map((existingConversation) =>
@@ -451,6 +568,38 @@ export default function ChatList({
     }
   };
 
+  // Debounce the raw query before hitting the server.
+  useEffect(() => {
+    const trimmed = searchQuery?.trim() ?? '';
+    if (trimmed.length < PEOPLE_SEARCH_MIN_LENGTH) {
+      setDebouncedSearch('');
+      return;
+    }
+    const timer = setTimeout(() => setDebouncedSearch(trimmed), PEOPLE_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const { data: peopleSearchData, isFetching: peopleSearchLoading } = useQuery({
+    queryKey: ['chat', 'people-search', debouncedSearch.toLowerCase()],
+    queryFn: () => searchUsersForMention(debouncedSearch, PEOPLE_SEARCH_LIMIT),
+    enabled: debouncedSearch.length >= PEOPLE_SEARCH_MIN_LENGTH,
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+  });
+
+  const handleStartConversation = async (person: MentionUser) => {
+    if (startingChatUserId) return;
+    setStartingChatUserId(person.id);
+    try {
+      const conversation = await getOrCreateConversation(person.id);
+      handleSelectConversation(conversation);
+    } catch (startError) {
+      console.error('Failed to start conversation:', startError);
+    } finally {
+      setStartingChatUserId(null);
+    }
+  };
+
   const normalizedSearch = searchQuery?.trim().toLowerCase() ?? '';
   const visibleConversations = normalizedSearch
     ? conversations.filter((conversation) => {
@@ -461,6 +610,18 @@ export default function ChatList({
         );
       })
     : conversations;
+
+  // People already in the visible chat list shouldn't repeat below it.
+  const conversationPeerIds = new Set(
+    conversations.map((conversation) => conversation.otherParticipant?.id).filter(Boolean)
+  );
+  const peopleResults =
+    normalizedSearch.length >= PEOPLE_SEARCH_MIN_LENGTH && debouncedSearch
+      ? (peopleSearchData?.users ?? []).filter(
+          (person) => person.id !== currentUserId && !conversationPeerIds.has(person.id)
+        )
+      : [];
+  const showPeopleSection = normalizedSearch.length >= PEOPLE_SEARCH_MIN_LENGTH;
 
   if (loading && conversations.length === 0) {
     return (
@@ -492,7 +653,7 @@ export default function ChatList({
     );
   }
 
-  if (conversations.length === 0) {
+  if (conversations.length === 0 && !normalizedSearch) {
     return (
       <div className="p-8 text-center">
         <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
@@ -512,12 +673,24 @@ export default function ChatList({
     );
   }
 
+  const noSearchResults =
+    normalizedSearch &&
+    visibleConversations.length === 0 &&
+    peopleResults.length === 0 &&
+    !peopleSearchLoading;
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-2 py-2 pb-24 md:pb-4">
-        {visibleConversations.length === 0 ? (
+        {normalizedSearch && visibleConversations.length > 0 && (
+          <p className="px-3 pt-1 pb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-neutral-500">
+            Chats
+          </p>
+        )}
+
+        {noSearchResults ? (
           <p className="p-6 text-center text-sm text-gray-500 dark:text-neutral-400">
-            No conversations match &ldquo;{searchQuery?.trim()}&rdquo;
+            No results for &ldquo;{searchQuery?.trim()}&rdquo;
           </p>
         ) : (
           visibleConversations.map((conversation) => (
@@ -526,9 +699,40 @@ export default function ChatList({
               conversation={conversation}
               isSelected={selectedConversationId === conversation.id}
               currentUserId={currentUserId}
+              isTyping={typingConversationIds.has(conversation.id)}
               onClick={() => handleSelectConversation(conversation)}
             />
           ))
+        )}
+
+        {showPeopleSection && (peopleResults.length > 0 || peopleSearchLoading) && (
+          <div className={visibleConversations.length > 0 ? 'mt-2' : undefined}>
+            <p className="px-3 pt-1 pb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-neutral-500">
+              People on Vormex
+            </p>
+            {peopleSearchLoading && peopleResults.length === 0 ? (
+              <div className="px-3 py-2.5 space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 animate-pulse">
+                    <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-neutral-800 shrink-0" />
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      <div className="h-3 w-1/3 bg-gray-200 dark:bg-neutral-800 rounded" />
+                      <div className="h-2.5 w-1/2 bg-gray-200 dark:bg-neutral-800 rounded" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              peopleResults.map((person) => (
+                <PersonSearchItem
+                  key={person.id}
+                  person={person}
+                  isStarting={startingChatUserId === person.id}
+                  onClick={() => void handleStartConversation(person)}
+                />
+              ))
+            )}
+          </div>
         )}
 
         {hasMore && !normalizedSearch && (
@@ -546,12 +750,60 @@ export default function ChatList({
 }
 
 // ============================================
+// Person Search Item (global user search result)
+// ============================================
+function PersonSearchItem({
+  person,
+  isStarting,
+  onClick,
+}: {
+  person: MentionUser;
+  isStarting: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={isStarting}
+      className={cn(
+        'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer text-left transition-colors',
+        'hover:bg-gray-100 dark:hover:bg-neutral-800/70',
+        isStarting && 'opacity-60 cursor-wait'
+      )}
+    >
+      <UserAvatar
+        imageSrc={person.profileImage ?? person.avatar}
+        name={person.name}
+        className="h-10 w-10 flex-shrink-0 bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
+      />
+      <div className="flex-1 min-w-0">
+        <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-gray-900 dark:text-white">
+          <span className="truncate">{person.name}</span>
+          <VerificationBadge
+            profileBadgeStyle={person.profileBadgeStyle}
+            isPremium={person.isPremium}
+            size="small"
+          />
+        </span>
+        <p className="text-sm truncate text-gray-500 dark:text-neutral-400">
+          {person.username ? `@${person.username}` : person.headline || ''}
+        </p>
+      </div>
+      <span className="flex-shrink-0 text-xs font-semibold text-blue-600 dark:text-blue-400">
+        {isStarting ? 'Opening…' : 'Message'}
+      </span>
+    </button>
+  );
+}
+
+// ============================================
 // Conversation Item Component
 // ============================================
 interface ConversationItemProps {
   conversation: Conversation;
   isSelected: boolean;
   currentUserId?: string;
+  isTyping?: boolean;
   onClick: () => void;
 }
 
@@ -559,6 +811,7 @@ function ConversationItem({
   conversation,
   isSelected,
   currentUserId,
+  isTyping,
   onClick
 }: ConversationItemProps) {
   const other = conversation.otherParticipant;
@@ -594,10 +847,15 @@ function ConversationItem({
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline justify-between gap-2">
           <span className={cn(
-            'text-sm truncate text-gray-900 dark:text-white',
+            'flex min-w-0 items-center gap-1.5 text-sm text-gray-900 dark:text-white',
             isUnread ? 'font-bold' : 'font-semibold'
           )}>
-            {other.name}
+            <span className="truncate">{other.name}</span>
+            <VerificationBadge
+              profileBadgeStyle={other.profileBadgeStyle}
+              isPremium={other.isPremium}
+              size="small"
+            />
           </span>
           {lastMessage && (
             <span className={cn(
@@ -610,7 +868,11 @@ function ConversationItem({
         </div>
 
         <div className="mt-0.5 flex items-center gap-1.5">
-          {lastMessage && preview ? (
+          {isTyping ? (
+            <p className="text-sm truncate italic font-medium text-green-600 dark:text-green-400 animate-pulse">
+              typing…
+            </p>
+          ) : lastMessage && preview ? (
             <>
               {isSentByMe &&
                 (lastMessage.status === 'READ' ? (

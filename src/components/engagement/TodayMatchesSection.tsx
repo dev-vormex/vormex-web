@@ -9,6 +9,7 @@ import { sendConnectionRequest } from '@/lib/api/connections';
 import Link from 'next/link';
 import { TodayMatchesSkeleton } from './TodayMatchesSkeleton';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { VerificationBadge } from '@/components/ui/VerificationBadge';
 
 /**
  * TodayMatchesSection - Horizontal scrollable match cards at top of feed
@@ -193,7 +194,14 @@ function MatchCard({
 
         {/* Info */}
         <div className="px-3 pb-2 text-center">
-          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{match.name}</p>
+          <p className="flex items-center justify-center gap-1.5 text-sm font-semibold text-gray-900 dark:text-white">
+            <span className="truncate">{match.name}</span>
+            <VerificationBadge
+              profileBadgeStyle={match.profileBadgeStyle}
+              isPremium={match.isPremium}
+              size="small"
+            />
+          </p>
           {match.college && (
             <p className="text-[11px] text-gray-400 dark:text-neutral-500 truncate mt-0.5">{match.college}</p>
           )}

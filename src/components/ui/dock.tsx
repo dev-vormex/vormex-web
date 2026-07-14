@@ -26,6 +26,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { HomeIcon, Plus, Bell, Group, MoreHorizontal, Film, MessageCircle } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/lib/auth/useAuth';
+import { useUnreadMessagesCount } from '@/hooks/useUnreadMessagesCount';
 import { BottomNavigation } from './BottomNavigation';
 import { PeopleYouKnowTabIcon } from '@/components/find-people/FindPeopleTabIcons';
 import { UserAvatar } from '@/components/ui/UserAvatar';
@@ -55,6 +56,7 @@ type DockItemProps = {
   children: React.ReactNode;
   href?: string;
   isActive?: boolean;
+  badge?: number;
 };
 
 type DockLabelProps = {
@@ -150,7 +152,7 @@ function Dock({
   );
 }
 
-function DockItem({ children, className, href, isActive }: DockItemProps) {
+function DockItem({ children, className, href, isActive, badge }: DockItemProps) {
   const router = useRouter();
   const ref = useRef<HTMLDivElement>(null);
   const { distance, magnification, mouseX, spring } = useDock();
@@ -197,6 +199,11 @@ function DockItem({ children, className, href, isActive }: DockItemProps) {
           width,
           isHovered
         } as Partial<DockIconProps & DockLabelProps>)
+      )}
+      {typeof badge === 'number' && badge > 0 && (
+        <span className="absolute -top-1 -right-1 z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-neutral-900">
+          {badge > 99 ? '99+' : badge}
+        </span>
       )}
     </motion.div>
   );
@@ -277,6 +284,7 @@ export function VormexDock() {
   const pathname = usePathname();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const { user } = useAuth();
+  const unreadMessagesCount = useUnreadMessagesCount();
 
   // Hide dock on auth/onboarding routes, and inside an open conversation where
   // the chat input sits at the bottom. The /messages list keeps the dock so
@@ -326,6 +334,7 @@ export function VormexDock() {
         title: 'Messaging',
         href: '/messages',
         icon: <MessageCircle className="h-full w-full text-neutral-600 dark:text-neutral-300" />,
+        badge: unreadMessagesCount,
       },
       {
         title: 'Create',
@@ -400,6 +409,7 @@ export function VormexDock() {
                 key={item.href}
                 href={item.href}
                 isActive={isActive(item.href)}
+                badge={item.badge}
                 className="aspect-square rounded-full bg-gray-200 dark:bg-neutral-800 hover:bg-gray-300 dark:hover:bg-neutral-700 transition-colors"
               >
                 <DockLabel>{item.title}</DockLabel>
@@ -437,7 +447,8 @@ export function VormexDock() {
             title: 'Messaging',
             href: '/messages',
             icon: <MessageCircle className="w-full h-full" />,
-            isActive: pathname.startsWith('/messages')
+            isActive: pathname.startsWith('/messages'),
+            badge: unreadMessagesCount
           },
           {
             title: 'More',

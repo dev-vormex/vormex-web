@@ -39,6 +39,7 @@ import { LikeListModal } from './LikeListModal';
 import { ShareModal } from './ShareModal';
 import ReportModal from '@/components/reports/ReportModal';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import type { ReactionType, ReactionSummary as ReactionSummaryType } from '@/types/post';
 
 interface PostCardProps {
@@ -722,8 +723,13 @@ export function PostCard({
             fallbackClassName="text-lg"
           />
           <div>
-            <p className="font-semibold text-gray-900 dark:text-white hover:underline">
-              {post.author.name}
+            <p className="flex items-center gap-1.5 font-semibold text-gray-900 dark:text-white hover:underline">
+              <span className="truncate">{post.author.name}</span>
+              <VerificationBadge
+                profileBadgeStyle={post.author.profileBadgeStyle}
+                isPremium={post.author.isPremium}
+                size="small"
+              />
             </p>
             <p className="text-sm text-gray-500 dark:text-neutral-400">
               {post.author.headline || `@${post.author.username}`}

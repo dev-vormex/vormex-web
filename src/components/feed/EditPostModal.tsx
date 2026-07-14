@@ -11,6 +11,7 @@ import {
   Loader2,
   Bold,
   Italic,
+  AlignCenter,
   List,
   Code,
   AtSign,
@@ -158,7 +159,7 @@ export function EditPostModal({ isOpen, onClose, post, onPostUpdated }: EditPost
   };
 
   // Text formatting helpers
-  const formatText = (wrapper: string) => {
+  const formatText = (prefix: string, suffix: string = prefix) => {
     const textarea = contentRef.current;
     if (!textarea) return;
 
@@ -170,11 +171,11 @@ export function EditPostModal({ isOpen, onClose, post, onPostUpdated }: EditPost
     let newCursorPos: number;
 
     if (selectedText) {
-      newContent = content.slice(0, start) + wrapper + selectedText + wrapper + content.slice(end);
-      newCursorPos = end + wrapper.length * 2;
+      newContent = content.slice(0, start) + prefix + selectedText + suffix + content.slice(end);
+      newCursorPos = end + prefix.length + suffix.length;
     } else {
-      newContent = content.slice(0, start) + wrapper + wrapper + content.slice(end);
-      newCursorPos = start + wrapper.length;
+      newContent = content.slice(0, start) + prefix + suffix + content.slice(end);
+      newCursorPos = start + prefix.length;
     }
 
     setContent(newContent);
@@ -188,6 +189,7 @@ export function EditPostModal({ isOpen, onClose, post, onPostUpdated }: EditPost
   const handleBold = () => formatText('**');
   const handleItalic = () => formatText('*');
   const handleCode = () => formatText('`');
+  const handleCenter = () => formatText('[center]', '[/center]');
 
   const handleList = () => {
     const textarea = contentRef.current;
@@ -460,6 +462,14 @@ export function EditPostModal({ isOpen, onClose, post, onPostUpdated }: EditPost
                     title="Code (`code`)"
                   >
                     <Code className="w-4 h-4 text-gray-600" />
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={handleCenter}
+                    className="p-2 rounded hover:bg-gray-200 transition-colors" 
+                    title="Center ([center]text[/center])"
+                  >
+                    <AlignCenter className="w-4 h-4 text-gray-600" />
                   </button>
                   <div className="w-px h-5 bg-gray-300 mx-1" />
                   <button 

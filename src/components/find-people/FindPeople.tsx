@@ -56,6 +56,14 @@ import { FIND_PEOPLE_STALE_TIME, queryKeys } from '@/lib/queryKeys';
 
 type TabType = 'known' | 'all' | 'smart' | 'suggestions' | 'college' | 'nearby';
 
+const PEOPLE_PAGE_SIZE = 50;
+
+function appendUniquePeople(current: PersonCardType[], incoming: PersonCardType[]): PersonCardType[] {
+  const byId = new Map(current.map((person) => [person.id, person]));
+  incoming.forEach((person) => byId.set(person.id, person));
+  return Array.from(byId.values());
+}
+
 type TabItem = {
   id: TabType;
   label: string;
@@ -286,8 +294,11 @@ export function FindPeople() {
     people: PersonCardType[];
     total: number;
     hasMore: boolean;
+    nextCursor?: string | null;
     suggestions: PersonCardType[];
+    suggestionsHasMore?: boolean;
     colleaguePeople: PersonCardType[];
+    colleagueHasMore?: boolean;
   }>(queryKeys.findPeopleInitial());
   const cachedFilterOptions = queryClient.getQueryData<FilterOptions>(
     queryKeys.peopleFilterOptions()
@@ -302,13 +313,31 @@ export function FindPeople() {
     () => cachedInitialData?.colleaguePeople ?? []
   );
   const [loading, setLoading] = useState(() => !cachedInitialData);
+  const [sectionLoading, setSectionLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(
     () => cachedFilterOptions ?? null
   );
-  const [page, setPage] = useState(1);
+  const [, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(() => cachedInitialData?.hasMore ?? true);
+  const [nextCursor, setNextCursor] = useState<string | null>(
+    () => cachedInitialData?.nextCursor ?? null
+  );
+  const [suggestionsPage, setSuggestionsPage] = useState(1);
+  const [suggestionsHasMore, setSuggestionsHasMore] = useState(
+    () => cachedInitialData?.suggestionsHasMore ?? false
+  );
+  const [suggestionsLoaded, setSuggestionsLoaded] = useState(
+    () => Boolean(cachedInitialData?.suggestions.length)
+  );
+  const [colleaguePage, setColleaguePage] = useState(1);
+  const [colleagueHasMore, setColleagueHasMore] = useState(
+    () => cachedInitialData?.colleagueHasMore ?? false
+  );
+  const [colleagueLoaded, setColleagueLoaded] = useState(
+    () => Boolean(cachedInitialData?.colleaguePeople.length)
+  );
   const [total, setTotal] = useState(() => cachedInitialData?.total ?? 0);
   const [selectedCollege, setSelectedCollege] = useState<string>('');
   const [selectedBranch, setSelectedBranch] = useState<string>('');
@@ -345,17 +374,16 @@ export function FindPeople() {
   const { data: initialData, isLoading: initialLoading, isError: initialError, refetch: refetchInitial } = useQuery({
     queryKey: queryKeys.findPeopleInitial(),
     queryFn: async () => {
-      const [allPeopleRes, suggestionsRes, collegeRes] = await Promise.all([
-        getPeople({}, { page: 1, limit: 20 }),
-        getSuggestions(10).catch(() => ({ suggestions: [] })),
-        getPeopleFromSameCollege(10).catch(() => ({ people: [] })),
-      ]);
+      const allPeopleRes = await getPeople({}, { limit: PEOPLE_PAGE_SIZE });
       return {
         people: allPeopleRes.people,
         total: allPeopleRes.total,
         hasMore: allPeopleRes.hasMore,
-        suggestions: suggestionsRes.suggestions,
-        colleaguePeople: collegeRes.people,
+        nextCursor: allPeopleRes.nextCursor,
+        suggestions: [],
+        suggestionsHasMore: false,
+        colleaguePeople: [],
+        colleagueHasMore: false,
       };
     },
     staleTime: FIND_PEOPLE_STALE_TIME,
@@ -374,8 +402,7 @@ export function FindPeople() {
       setPeople(initialData.people);
       setTotal(initialData.total);
       setHasMore(initialData.hasMore);
-      setSuggestions(initialData.suggestions);
-      setColleaguePeople(initialData.colleaguePeople);
+      setNextCursor(initialData.nextCursor ?? null);
       setLoading(false);
     }
   }, [initialData]);
@@ -397,6 +424,54 @@ export function FindPeople() {
     setActiveTab(getActiveTabFromParam(tabParam));
   }, [tabParam]);
 
+  useEffect(() => {
+    if (activeTab !== 'suggestions' || suggestionsLoaded) return;
+    let cancelled = false;
+    setSectionLoading(true);
+    getSuggestions(PEOPLE_PAGE_SIZE, 1)
+      .then((result) => {
+        if (cancelled) return;
+        setSuggestions(result.suggestions);
+        setSuggestionsPage(1);
+        setSuggestionsHasMore(Boolean(result.hasMore));
+      })
+      .catch((error) => console.error('Failed to load suggestions:', error))
+      .finally(() => {
+        if (!cancelled) {
+          setSuggestionsLoaded(true);
+          setSectionLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+      setSectionLoading(false);
+    };
+  }, [activeTab, suggestionsLoaded]);
+
+  useEffect(() => {
+    if (activeTab !== 'college' || colleagueLoaded) return;
+    let cancelled = false;
+    setSectionLoading(true);
+    getPeopleFromSameCollege(PEOPLE_PAGE_SIZE, 1)
+      .then((result) => {
+        if (cancelled) return;
+        setColleaguePeople(result.people);
+        setColleaguePage(1);
+        setColleagueHasMore(Boolean(result.hasMore));
+      })
+      .catch((error) => console.error('Failed to load same-campus people:', error))
+      .finally(() => {
+        if (!cancelled) {
+          setColleagueLoaded(true);
+          setSectionLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+      setSectionLoading(false);
+    };
+  }, [activeTab, colleagueLoaded]);
+
   // Fetch on search / filter change; fall back to cached initial data when neither is set
   useEffect(() => {
     if (activeTab !== 'all') return;
@@ -406,6 +481,8 @@ export function FindPeople() {
         setPeople(initialData.people);
         setTotal(initialData.total);
         setHasMore(initialData.hasMore);
+        setNextCursor(initialData.nextCursor ?? null);
+        setPage(1);
       }
       setLoading(false);
       return;
@@ -417,13 +494,14 @@ export function FindPeople() {
 
     getPeople(
       { ...activeFilters, search: debouncedSearchQuery || undefined },
-      { page: 1, limit: 20 }
+      { limit: PEOPLE_PAGE_SIZE }
     )
       .then((result) => {
         if (cancelled) return;
         setPeople(result.people);
         setTotal(result.total);
         setHasMore(result.hasMore);
+        setNextCursor(result.nextCursor ?? null);
       })
       .catch((error) => {
         console.error('Search failed:', error);
@@ -448,26 +526,62 @@ export function FindPeople() {
 
   // Load more people
   const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore || activeTab !== 'all') return;
+    const activeHasMore =
+      activeTab === 'all'
+        ? hasMore
+        : activeTab === 'suggestions'
+          ? suggestionsHasMore
+          : activeTab === 'college'
+            ? colleagueHasMore
+            : false;
+    if (loadingMore || !activeHasMore) return;
 
     setLoadingMore(true);
-    const nextPage = page + 1;
 
     try {
-      const result = await getPeople(
-        { ...activeFilters, search: debouncedSearchQuery || undefined },
-        { page: nextPage, limit: 20 }
-      );
-
-      setPeople(prev => [...prev, ...result.people]);
-      setPage(nextPage);
-      setHasMore(result.hasMore);
+      if (activeTab === 'all') {
+        if (!nextCursor) {
+          setHasMore(false);
+          return;
+        }
+        const result = await getPeople(
+          { ...activeFilters, search: debouncedSearchQuery || undefined },
+          { cursor: nextCursor, limit: PEOPLE_PAGE_SIZE }
+        );
+        setPeople((previous) => appendUniquePeople(previous, result.people));
+        setPage((previous) => previous + 1);
+        setHasMore(result.hasMore);
+        setNextCursor(result.nextCursor ?? null);
+      } else if (activeTab === 'suggestions') {
+        const nextPage = suggestionsPage + 1;
+        const result = await getSuggestions(PEOPLE_PAGE_SIZE, nextPage);
+        setSuggestions((previous) => appendUniquePeople(previous, result.suggestions));
+        setSuggestionsPage(nextPage);
+        setSuggestionsHasMore(Boolean(result.hasMore));
+      } else if (activeTab === 'college') {
+        const nextPage = colleaguePage + 1;
+        const result = await getPeopleFromSameCollege(PEOPLE_PAGE_SIZE, nextPage);
+        setColleaguePeople((previous) => appendUniquePeople(previous, result.people));
+        setColleaguePage(nextPage);
+        setColleagueHasMore(Boolean(result.hasMore));
+      }
     } catch (error) {
       console.error('Failed to load more:', error);
     } finally {
       setLoadingMore(false);
     }
-  }, [activeTab, activeFilters, debouncedSearchQuery, hasMore, loadingMore, page]);
+  }, [
+    activeTab,
+    activeFilters,
+    colleagueHasMore,
+    colleaguePage,
+    debouncedSearchQuery,
+    hasMore,
+    loadingMore,
+    nextCursor,
+    suggestionsHasMore,
+    suggestionsPage,
+  ]);
 
   // Intersection observer for infinite scroll
   useEffect(() => {
@@ -477,7 +591,11 @@ export function FindPeople() {
 
     observerRef.current = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore && activeTab === 'all') {
+        const canLoad =
+          (activeTab === 'all' && hasMore) ||
+          (activeTab === 'suggestions' && suggestionsHasMore) ||
+          (activeTab === 'college' && colleagueHasMore);
+        if (entries[0].isIntersecting && canLoad && !loadingMore) {
           loadMore();
         }
       },
@@ -493,7 +611,7 @@ export function FindPeople() {
         observerRef.current.disconnect();
       }
     };
-  }, [activeTab, hasMore, loadMore, loadingMore, page]);
+  }, [activeTab, colleagueHasMore, hasMore, loadMore, loadingMore, suggestionsHasMore]);
 
   // Handle connection status change
   const handleConnectionChange = (personId: string, newStatus: string) => {
@@ -538,6 +656,11 @@ export function FindPeople() {
   })();
 
   const isGridTab = activeTab === 'all' || activeTab === 'suggestions' || activeTab === 'college';
+  const isGridLoading = loading || sectionLoading;
+  const activeGridHasMore =
+    (activeTab === 'all' && hasMore) ||
+    (activeTab === 'suggestions' && suggestionsHasMore) ||
+    (activeTab === 'college' && colleagueHasMore);
   const showSidebar = activeTab === 'all';
 
   const filterPanelProps: FilterPanelProps = {
@@ -604,11 +727,6 @@ export function FindPeople() {
                 Grow your network — students, creators and builders
               </p>
             </div>
-            {total > 0 && activeTab === 'all' && (
-              <span className="hidden sm:block pb-1 text-sm text-gray-500 dark:text-neutral-400">
-                {total.toLocaleString()} people
-              </span>
-            )}
           </div>
 
           {/* Search Bar (only for All tab) */}
@@ -688,7 +806,7 @@ export function FindPeople() {
         {/* Main content */}
         <main className="flex-1 min-w-0">
           {/* Active filter chips + result count */}
-          {activeTab === 'all' && (hasActiveFilters || debouncedSearchQuery) && !loading && (
+          {activeTab === 'all' && (hasActiveFilters || debouncedSearchQuery) && !isGridLoading && (
             <div className="mb-4 flex flex-wrap items-center gap-2">
               {activeFilterChips}
               {hasActiveFilters && (
@@ -714,7 +832,7 @@ export function FindPeople() {
           {activeTab === 'nearby' && <NearbyUsers />}
 
           {/* Skeleton Loading */}
-          {isGridTab && loading && (
+          {isGridTab && isGridLoading && (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (
                 <PersonCardSkeleton key={i} />
@@ -723,7 +841,7 @@ export function FindPeople() {
           )}
 
           {/* Error State */}
-          {isGridTab && !loading && initialError && (
+          {isGridTab && !isGridLoading && initialError && (
             <div className="text-center py-16 bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800">
               <AlertCircle className="w-12 h-12 mx-auto text-red-400 mb-4" />
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
@@ -742,7 +860,7 @@ export function FindPeople() {
           )}
 
           {/* Empty State */}
-          {isGridTab && !loading && !initialError && displayedPeople.length === 0 && (
+          {isGridTab && !isGridLoading && !initialError && displayedPeople.length === 0 && (
             <div className="text-center py-16 bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800">
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
                 <Users className="w-8 h-8 text-gray-400 dark:text-neutral-500" />
@@ -777,7 +895,7 @@ export function FindPeople() {
           )}
 
           {/* People Grid */}
-          {isGridTab && !loading && displayedPeople.length > 0 && (
+          {isGridTab && !isGridLoading && displayedPeople.length > 0 && (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {displayedPeople.map((person) => (
                 <PersonCard
@@ -790,7 +908,7 @@ export function FindPeople() {
           )}
 
           {/* Load More Trigger */}
-          {activeTab === 'all' && hasMore && !loading && (
+          {isGridTab && activeGridHasMore && !isGridLoading && (
             <div ref={loadMoreRef} className="flex justify-center py-8">
               {loadingMore ? (
                 <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
@@ -800,7 +918,7 @@ export function FindPeople() {
                   className="flex items-center gap-2 px-6 py-2 rounded-full border border-gray-300 dark:border-neutral-700 text-sm font-semibold text-gray-600 dark:text-neutral-400 hover:bg-white dark:hover:bg-neutral-900 hover:text-gray-800 dark:hover:text-neutral-200 transition-colors"
                 >
                   <RefreshCw className="w-4 h-4" />
-                  Load more
+                  Load next 50
                 </button>
               )}
             </div>

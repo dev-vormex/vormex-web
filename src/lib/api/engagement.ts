@@ -107,6 +107,10 @@ export interface DailyMatch {
   interests: string[];
   isOnline: boolean;
   replyRate: number;
+  verified?: boolean;
+  isVerified?: boolean;
+  profileBadgeStyle?: string | null;
+  isPremium?: boolean;
 }
 
 export interface DailyMatchesResponse {

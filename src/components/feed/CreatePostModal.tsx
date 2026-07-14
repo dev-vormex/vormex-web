@@ -20,6 +20,7 @@ import {
   Trash2,
   Bold,
   Italic,
+  AlignCenter,
   List,
   Code,
   AtSign,
@@ -357,6 +358,11 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
   // Format code: `code`
   const handleCode = () => {
     formatText('`');
+  };
+
+  // Format center: [center]text[/center]
+  const handleCenter = () => {
+    formatText('[center]', '[/center]');
   };
 
   // Format list: add "- " at start of line
@@ -758,6 +764,14 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
                 >
                   <Code className="w-4 h-4 text-gray-600" />
                 </button>
+                <button 
+                  type="button"
+                  onClick={handleCenter}
+                  className="p-2 rounded hover:bg-gray-200 transition-colors" 
+                  title="Center ([center]text[/center])"
+                >
+                  <AlignCenter className="w-4 h-4 text-gray-600" />
+                </button>
                 <div className="w-px h-5 bg-gray-300 mx-1" />
                 <button 
                   type="button"
@@ -813,7 +827,7 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
                   ref={contentRef}
                   value={content}
                   onChange={handleContentChange}
-                  placeholder="What do you want to share? Use **bold**, *italic*, [color:#22c55e]colored text[/color]"
+                  placeholder="What do you want to share? Use **bold**, *italic*, [center]centered text[/center], [color:#22c55e]colored text[/color]"
                   className="w-full min-h-[140px] p-5 rounded-xl text-gray-800 placeholder-gray-400 resize-none outline-none text-base leading-relaxed"
                   style={{
                     background: '#ecf0f3',

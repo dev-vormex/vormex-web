@@ -13,6 +13,10 @@ export interface SmartMatch {
     interests: string[];
     bio: string | null;
     githubConnected: boolean;
+    verified?: boolean;
+    isVerified?: boolean;
+    profileBadgeStyle?: string | null;
+    isPremium?: boolean;
     skills: { name: string; proficiency: string | null }[];
     onboarding: {
       primaryGoal: string | null;
@@ -50,6 +54,7 @@ export const matchingAPI = {
     total: number;
     page: number;
     totalPages: number;
+    hasMore: boolean;
   }> => {
     const searchParams = new URLSearchParams();
     if (params?.type) searchParams.set('type', params.type);
@@ -68,6 +73,10 @@ export const matchingAPI = {
         headline: string | null;
         college: string | null;
         graduationYear: number | null;
+        verified?: boolean;
+        isVerified?: boolean;
+        profileBadgeStyle?: string | null;
+        isPremium?: boolean;
       };
       teachableSkills: string[];
       xp: number;
@@ -86,6 +95,10 @@ export const matchingAPI = {
         profileImage: string | null;
         headline: string | null;
         college: string | null;
+        verified?: boolean;
+        isVerified?: boolean;
+        profileBadgeStyle?: string | null;
+        isPremium?: boolean;
       };
       sharedGoal: string | null;
       availability: string | null;

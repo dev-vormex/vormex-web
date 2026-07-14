@@ -44,4 +44,5 @@ export const queryKeys = {
     ['chat-conversation', conversationId] as const,
   chatMessages: (conversationId: string) =>
     ['chat-messages', conversationId] as const,
+  chatUnreadCount: () => ['chat-unread-count'] as const,
 };

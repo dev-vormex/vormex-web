@@ -24,77 +24,17 @@ import MessageMenu, { MessageQuickActions } from './MessageMenu';
 import { WALLPAPER_OPTIONS } from './ChatSettingsPanel';
 import type { UploadingMessage, OptimisticMessage } from './ChatInput';
 import { DEFAULT_CHAT_REACTIONS } from '@/lib/chat/customization';
-import { CHAT_STALE_TIME, queryKeys } from '@/lib/queryKeys';
+import { queryKeys } from '@/lib/queryKeys';
 import {
   readCachedMessages,
   writeCachedMessages,
 } from '@/lib/chat/browserCache';
+import { mergeMessages, normalizeMessage } from '@/lib/chat/messageCache';
 
 const HISTORY_LOAD_THRESHOLD = 96;
 const AUTO_SCROLL_THRESHOLD = 120;
 
 type AutoScrollMode = 'instant' | 'smooth' | null;
-
-function wasMessageEdited(message: Message): boolean {
-  if (!message.createdAt || !message.updatedAt) return false;
-  const created = new Date(message.createdAt).getTime();
-  const updated = new Date(message.updatedAt).getTime();
-  // Consider edited if there's at least 1 second difference.
-  // Prisma sets both timestamps at the exact same moment on creation.
-  return updated - created >= 1000;
-}
-
-function normalizeMessage(message: Message): Message {
-  return {
-    ...message,
-    isEdited: wasMessageEdited(message),
-  };
-}
-
-function mergeMessages(existingMessages: Message[], incomingMessages: Message[]): Message[] {
-  if (incomingMessages.length === 0) {
-    return existingMessages;
-  }
-
-  const messageMap = new Map(existingMessages.map((message) => [message.id, message]));
-  const clientMessageIdMap = new Map(
-    existingMessages
-      .map((message) => [message.clientMessageId, message.id] as const)
-      .filter(([clientMessageId]) => Boolean(clientMessageId))
-  );
-
-  incomingMessages.forEach((incomingMessage) => {
-    const normalizedMessage = normalizeMessage(incomingMessage);
-    const existingIdForClientMessage = normalizedMessage.clientMessageId
-      ? clientMessageIdMap.get(normalizedMessage.clientMessageId)
-      : undefined;
-    const existingMessage = messageMap.get(existingIdForClientMessage || normalizedMessage.id);
-    if (existingIdForClientMessage && existingIdForClientMessage !== normalizedMessage.id) {
-      messageMap.delete(existingIdForClientMessage);
-    }
-
-    messageMap.set(
-      normalizedMessage.id,
-      existingMessage
-        ? {
-            ...existingMessage,
-            ...normalizedMessage,
-            sender: normalizedMessage.sender ?? existingMessage.sender,
-            reactions: normalizedMessage.reactions ?? existingMessage.reactions,
-            replyTo: normalizedMessage.replyTo ?? existingMessage.replyTo,
-          }
-        : normalizedMessage
-    );
-    if (normalizedMessage.clientMessageId) {
-      clientMessageIdMap.set(normalizedMessage.clientMessageId, normalizedMessage.id);
-    }
-  });
-
-  return Array.from(messageMap.values()).sort(
-    (firstMessage, secondMessage) =>
-      new Date(firstMessage.createdAt).getTime() - new Date(secondMessage.createdAt).getTime()
-  );
-}
 
 function isNearBottom(container: HTMLDivElement | null): boolean {
   if (!container) {
@@ -217,6 +157,7 @@ export default function ChatMessages({
   const syncReadState = useCallback(async () => {
     try {
       await markConversationAsRead(conversationId);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.chatUnreadCount() });
     } catch (error) {
       const status = typeof error === 'object' && error !== null && 'response' in error
         ? (error as { response?: { status?: number } }).response?.status
@@ -228,7 +169,7 @@ export default function ChatMessages({
       );
       markChatAsRead(conversationId);
     }
-  }, [conversationId]);
+  }, [conversationId, queryClient]);
 
   const fetchMessages = useCallback(async (cursor?: string) => {
     const fetchKey = cursor ?? '__initial__';
@@ -261,8 +202,11 @@ export default function ChatMessages({
       } else {
         setMessages((previousMessages) => mergeMessages(previousMessages, normalizedMessages));
         hasHydratedMessageCacheRef.current = true;
-        autoScrollEnabledRef.current = true;
-        setAutoScrollMode('instant');
+        // Snap to the newest message unless the user already scrolled up to
+        // read history while this fetch was in flight.
+        if (autoScrollEnabledRef.current) {
+          setAutoScrollMode('instant');
+        }
 
         // Find the last message from the other user for AI assistant
         if (onLastMessageUpdate) {
@@ -289,13 +233,7 @@ export default function ChatMessages({
 
   // Initial load and join room
   useEffect(() => {
-    const cachedResponse = queryClient.getQueryData<MessagesResponse>(messagesQueryKey);
-    let shouldFetch = true;
-
-    if (cachedResponse) {
-      const updatedAt = queryClient.getQueryState(messagesQueryKey)?.dataUpdatedAt ?? 0;
-      shouldFetch = Date.now() - updatedAt > CHAT_STALE_TIME;
-    } else {
+    if (!queryClient.getQueryData<MessagesResponse>(messagesQueryKey)) {
       const browserCache = readCachedMessages(currentUserId, conversationId);
       if (browserCache) {
         const normalizedMessages = browserCache.value.messages.map(normalizeMessage);
@@ -308,15 +246,15 @@ export default function ChatMessages({
         setNextCursor(browserCache.value.nextCursor);
         setLoading(false);
         hasHydratedMessageCacheRef.current = true;
-        shouldFetch = !browserCache.isFresh;
       }
     }
 
-    if (shouldFetch) {
-      fetchMessages();
-    } else {
-      setLoading(false);
-    }
+    // Always revalidate against the server. A cached thread can be missing
+    // messages that arrived while this conversation was closed (the socket
+    // may have been down, or the events consumed elsewhere), so "fresh by
+    // timestamp" does not mean "complete". Cached messages still paint
+    // instantly; this fetch merges anything newer without a spinner.
+    fetchMessages();
 
     joinChatRoom(conversationId);
     void syncReadState();
@@ -367,9 +305,21 @@ export default function ChatMessages({
       }
     };
 
+    let typingExpiryTimer: ReturnType<typeof setTimeout> | null = null;
+
     const handleTyping = (data: { conversationId: string; userId: string; isTyping: boolean }) => {
       if (data.conversationId === conversationId && data.userId !== currentUserId) {
+        if (typingExpiryTimer) {
+          clearTimeout(typingExpiryTimer);
+          typingExpiryTimer = null;
+        }
         setTypingUser(data.isTyping ? data.userId : null);
+        if (data.isTyping) {
+          // The sender heartbeats "typing" every ~2s while active; if the
+          // heartbeats stop (missed stop event, disconnect) the indicator
+          // must expire on its own instead of sticking forever.
+          typingExpiryTimer = setTimeout(() => setTypingUser(null), 4500);
+        }
       }
     };
 
@@ -421,8 +371,8 @@ export default function ChatMessages({
       if (data.conversationId === conversationId) {
         setMessages(prev => 
           prev.map(m => 
-            m.id === data.messageId 
-              ? { ...m, content: data.content, updatedAt: String(data.editedAt), isEdited: true } 
+            m.id === data.messageId
+              ? { ...m, content: data.content, updatedAt: String(data.editedAt), editedAt: String(data.editedAt), isEdited: true }
               : m
           )
         );
@@ -496,6 +446,9 @@ export default function ChatMessages({
     socket.on('error', handleError);
 
     return () => {
+      if (typingExpiryTimer) {
+        clearTimeout(typingExpiryTimer);
+      }
       socket.off('chat:new_message', handleNewMessage);
       socket.off('chat:notification', handleChatNotification);
       socket.off('chat:user_typing', handleTyping);

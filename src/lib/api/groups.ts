@@ -15,6 +15,10 @@ export interface GroupUser {
   profileImage: string | null;
   avatar?: string | null; // Alias for profileImage
   headline?: string | null;
+  verified?: boolean;
+  isVerified?: boolean;
+  profileBadgeStyle?: string | null;
+  isPremium?: boolean;
 }
 
 export interface Group {

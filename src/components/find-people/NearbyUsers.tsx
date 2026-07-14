@@ -48,6 +48,9 @@ export function NearbyUsers({ onBack }: NearbyUsersProps) {
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [radius, setRadius] = useState(50);
@@ -77,6 +80,7 @@ export function NearbyUsers({ onBack }: NearbyUsersProps) {
 
   // Watch position for real-time location updates
   const watchPositionIdRef = useRef<number | null>(null);
+  const loadMoreRef = useRef<HTMLButtonElement | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -91,7 +95,14 @@ export function NearbyUsers({ onBack }: NearbyUsersProps) {
 
   // Fetch nearby users - pass device lat/lng for real-time accuracy
   const fetchNearbyUsers = useCallback(
-    async (lat?: number, lng?: number, search?: string, radiusKm?: number) => {
+    async (
+      lat?: number,
+      lng?: number,
+      search?: string,
+      radiusKm?: number,
+      requestedPage: number = 1,
+      append: boolean = false
+    ) => {
       try {
         const centerLat = lat ?? myLocation?.lat;
         const centerLng = lng ?? myLocation?.lng;
@@ -105,13 +116,21 @@ export function NearbyUsers({ onBack }: NearbyUsersProps) {
           50,
           centerLat,
           centerLng,
-          (search ?? debouncedSearch) || undefined
+          (search ?? debouncedSearch) || undefined,
+          requestedPage
         );
         if (result.locationRequired) {
           setNearbyUsers([]);
           return;
         }
-        setNearbyUsers(result.users || []);
+        setNearbyUsers((previous) => {
+          if (!append) return result.users || [];
+          const byId = new Map(previous.map((user) => [user.id, user]));
+          (result.users || []).forEach((user) => byId.set(user.id, user));
+          return Array.from(byId.values());
+        });
+        setPage(requestedPage);
+        setHasMore(Boolean(result.hasMore));
         if (result.userLocation && (!lat || !lng)) {
           setMyLocation({ lat: result.userLocation.lat, lng: result.userLocation.lng });
         }
@@ -121,6 +140,23 @@ export function NearbyUsers({ onBack }: NearbyUsersProps) {
     },
     [radius, myLocation?.lat, myLocation?.lng, debouncedSearch]
   );
+
+  const loadMoreNearby = useCallback(async () => {
+    if (!myLocation || loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      await fetchNearbyUsers(
+        myLocation.lat,
+        myLocation.lng,
+        debouncedSearch,
+        radius,
+        page + 1,
+        true
+      );
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [debouncedSearch, fetchNearbyUsers, hasMore, loadingMore, myLocation, page, radius]);
 
   // Update location and fetch nearby users
   const refreshLocation = useCallback(async () => {
@@ -191,9 +227,22 @@ export function NearbyUsers({ onBack }: NearbyUsersProps) {
   // Re-fetch when radius or search change
   useEffect(() => {
     if (!loading && myLocation && !locationError) {
-      fetchNearbyUsers(myLocation.lat, myLocation.lng, debouncedSearch, radius);
+      fetchNearbyUsers(myLocation.lat, myLocation.lng, debouncedSearch, radius, 1, false);
     }
   }, [radius, debouncedSearch, myLocation?.lat, myLocation?.lng, loading, locationError, fetchNearbyUsers]);
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target || !hasMore) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) void loadMoreNearby();
+      },
+      { rootMargin: '0px 200px' }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, loadMoreNearby]);
 
   // Handle connection
   const handleConnect = async (userId: string) => {
@@ -561,6 +610,17 @@ export function NearbyUsers({ onBack }: NearbyUsersProps) {
                     </div>
                   </button>
                 ))}
+                {hasMore && (
+                  <button
+                    ref={loadMoreRef}
+                    type="button"
+                    onClick={() => void loadMoreNearby()}
+                    disabled={loadingMore}
+                    className="flex-shrink-0 rounded-xl border border-gray-200 px-4 text-sm font-semibold text-blue-600 disabled:opacity-60 dark:border-neutral-700 dark:text-blue-400"
+                  >
+                    {loadingMore ? 'Loading…' : 'Next 50'}
+                  </button>
+                )}
               </div>
             </div>
           </div>

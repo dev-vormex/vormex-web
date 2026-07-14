@@ -9,6 +9,8 @@ export interface User {
   bio?: string | null;
   graduationYear?: number | null;
   isVerified: boolean;
+  isPremium?: boolean;
+  profileBadgeStyle?: string | null;
   authProvider?: 'email' | 'google';
   profileRing?: string | null; // "original" | "hue" - animated ring from welcome gift
   hasClaimedWelcomeGift?: boolean;

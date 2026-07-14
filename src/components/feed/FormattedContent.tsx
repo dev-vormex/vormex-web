@@ -15,11 +15,42 @@ interface FormattedContentProps {
  * - `code` inline
  * - @mentions (clickable links)
  * - [color:red]colored text[/color]
+ * - [center]centered text[/center]
  * - URLs (auto-linked)
  * - Line breaks
  */
 export function FormattedContent({ content, className = '' }: FormattedContentProps) {
   if (!content) return null;
+
+  const colorTagMatch = (text: string) => text.match(/^\[color:\s*([a-zA-Z]+|#[0-9a-fA-F]{3,8})\]/i);
+
+  const findMatchingClosingTag = (text: string, startIndex: number, tagName: 'color' | 'center') => {
+    const openPattern = tagName === 'color' ? /\[color:\s*(?:[a-zA-Z]+|#[0-9a-fA-F]{3,8})\]/gi : /\[center\]/gi;
+    const closePattern = tagName === 'color' ? /\[\/color\]/gi : /\[\/center\]/gi;
+    const tokenPattern = new RegExp(`${openPattern.source}|${closePattern.source}`, 'gi');
+    tokenPattern.lastIndex = startIndex;
+
+    let depth = 1;
+    let match: RegExpExecArray | null;
+    while ((match = tokenPattern.exec(text)) !== null) {
+      const token = match[0].toLowerCase();
+      const isClosingTag = token === `[/${tagName}]`;
+
+      if (isClosingTag) {
+        depth -= 1;
+        if (depth === 0) {
+          return {
+            start: match.index,
+            end: match.index + match[0].length,
+          };
+        }
+      } else {
+        depth += 1;
+      }
+    }
+
+    return null;
+  };
 
   const renderFormattedText = (text: string): React.ReactNode[] => {
     const elements: React.ReactNode[] = [];
@@ -27,17 +58,46 @@ export function FormattedContent({ content, className = '' }: FormattedContentPr
     let key = 0;
 
     while (remaining.length > 0) {
+      // Check for center blocks: [center]text[/center]
+      const centerOpenTag = remaining.match(/^\[center\]/i);
+      if (centerOpenTag) {
+        const closingTag = findMatchingClosingTag(remaining, centerOpenTag[0].length, 'center');
+        if (closingTag) {
+          elements.push(
+            <span key={key++} className="block w-full text-center">
+              {renderFormattedText(remaining.slice(centerOpenTag[0].length, closingTag.start))}
+            </span>
+          );
+          remaining = remaining.slice(closingTag.end);
+          continue;
+        }
+      }
+
       // Check for color tags: [color:red], [color:#22c55e], [color: #hex] (optional space)
-      const colorMatch = remaining.match(/^\[color:\s*([a-zA-Z]+|#[0-9a-fA-F]{3,8})\]([\s\S]*?)\[\/color\]/i);
+      const colorMatch = colorTagMatch(remaining);
       if (colorMatch) {
-        const [fullMatch, color, innerText] = colorMatch;
+        const [openTag, color] = colorMatch;
+        const closingTag = findMatchingClosingTag(remaining, openTag.length, 'color');
+        if (!closingTag) {
+          elements.push(<span key={key++}>{remaining[0]}</span>);
+          remaining = remaining.slice(1);
+          continue;
+        }
+
         const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(color) || /^[a-zA-Z]+$/.test(color) ? color : '#000';
         elements.push(
           <span key={key++} style={{ color: safeColor }}>
-            {renderFormattedText(innerText)}
+            {renderFormattedText(remaining.slice(openTag.length, closingTag.start))}
           </span>
         );
-        remaining = remaining.slice(fullMatch.length);
+        remaining = remaining.slice(closingTag.end);
+        continue;
+      }
+
+      // Hide unmatched closing tags so raw formatting markers do not show in posts.
+      const closingTagMatch = remaining.match(/^\[\/(?:color|center)\]/i);
+      if (closingTagMatch) {
+        remaining = remaining.slice(closingTagMatch[0].length);
         continue;
       }
 

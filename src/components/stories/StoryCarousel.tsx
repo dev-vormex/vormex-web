@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth/useAuth';
 import { getStoriesFeed, type StoryGroup, type Story } from '@/lib/api/stories';
+import { readCachedStories, writeCachedStories } from '@/lib/stories/browserCache';
 import { initializeSocket } from '@/lib/socket';
 
 interface StoryCarouselProps {
@@ -21,15 +22,25 @@ export function StoryCarousel({ onOpenStory, onCreateStory }: StoryCarouselProps
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
+  // Last stories snapshot from localStorage so a fresh page load paints the
+  // carousel (and starts the LCP image download) without waiting for the
+  // network. Safe to read in render: this component is client-only, it never
+  // appears in server-rendered HTML.
+  const cachedStories = useMemo(() => readCachedStories(user?.id), [user?.id]);
+
   // Cached with React Query - no reload when navigating back to home
   const { data, isLoading: queryLoading } = useQuery({
     queryKey: ['stories', user?.id],
     queryFn: async () => {
       const response = await getStoriesFeed();
-      return response?.storyGroups || [];
+      const groups = response?.storyGroups || [];
+      writeCachedStories(user?.id, groups);
+      return groups;
     },
     staleTime: 5 * 60 * 1000, // 5 min - instant back navigation
     gcTime: 10 * 60 * 1000,
+    initialData: cachedStories?.value,
+    initialDataUpdatedAt: cachedStories?.savedAt,
     enabled: !authLoading && !!user,
     retry: (failureCount, error) =>
       failureCount < 2 &&
@@ -230,15 +241,17 @@ export function StoryCarousel({ onOpenStory, onCreateStory }: StoryCarouselProps
             group={ownStoryGroup}
             onClick={() => onOpenStory(ownStoryGroup)}
             isOwn
+            eager
           />
         )}
 
         {/* Other Stories */}
-        {otherStoryGroups.map((group) => (
+        {otherStoryGroups.map((group, index) => (
           <StoryCard
             key={group.user.id}
             group={group}
             onClick={() => onOpenStory(group)}
+            eager={index < 3}
           />
         ))}
 
@@ -263,11 +276,29 @@ interface StoryCardProps {
   group: StoryGroup;
   onClick: () => void;
   isOwn?: boolean;
+  eager?: boolean;
 }
 
-function StoryCard({ group, onClick, isOwn }: StoryCardProps) {
+// Hosts covered by next.config.ts images.remotePatterns. Media from these can
+// go through the Next image optimizer (resized ~224px thumb instead of the
+// full-resolution upload); anything else falls back to a plain <img>.
+function canOptimizeImage(src: string): boolean {
+  try {
+    const url = new URL(src);
+    return (
+      url.protocol === 'https:' &&
+      (url.hostname === 'vormex.b-cdn.net' ||
+        url.hostname.endsWith('.googleusercontent.com'))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function StoryCard({ group, onClick, isOwn, eager }: StoryCardProps) {
   const { user, stories, hasUnviewed } = group;
   const latestStory = stories[0];
+  const storyImageSrc = latestStory.thumbnailUrl || latestStory.mediaUrl;
 
   return (
     <motion.button
@@ -276,14 +307,27 @@ function StoryCard({ group, onClick, isOwn }: StoryCardProps) {
       whileTap={{ scale: 0.98 }}
       className="flex-shrink-0 relative w-28 h-40 rounded-2xl overflow-hidden shadow-lg group/card"
     >
-      {/* Background Image - use img for CDN URLs to avoid Next.js Image restrictions */}
+      {/* Background Image */}
       <div className="absolute inset-0">
-        {(latestStory.thumbnailUrl || latestStory.mediaUrl) ? (
-          <img
-            src={latestStory.thumbnailUrl || latestStory.mediaUrl}
-            alt={`${user.name}'s story`}
-            className="w-full h-full object-cover transition-transform duration-300 group-hover/card:scale-105"
-          />
+        {storyImageSrc ? (
+          canOptimizeImage(storyImageSrc) ? (
+            <Image
+              src={storyImageSrc}
+              alt={`${user.name}'s story`}
+              fill
+              sizes="112px"
+              priority={eager}
+              className="object-cover transition-transform duration-300 group-hover/card:scale-105"
+            />
+          ) : (
+            <img
+              src={storyImageSrc}
+              alt={`${user.name}'s story`}
+              fetchPriority={eager ? 'high' : 'auto'}
+              loading={eager ? 'eager' : 'lazy'}
+              className="w-full h-full object-cover transition-transform duration-300 group-hover/card:scale-105"
+            />
+          )
         ) : (
           <div 
             className="w-full h-full"
