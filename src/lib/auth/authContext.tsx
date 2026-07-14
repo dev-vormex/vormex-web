@@ -12,6 +12,7 @@ import {
 } from './authHelpers';
 import type { User, LoginCredentials, RegisterData, AuthResponse } from '@/types/auth';
 import { handleApiError } from '@/lib/utils/errorHandler';
+import { disconnectSocket } from '@/lib/socket';
 
 const AUTH_PRESENT_COOKIE = 'vx_auth_present';
 const CSRF_COOKIE = 'vx_csrf';
@@ -58,8 +59,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (userData.onboardingCompleted) {
               Cookies.set('onboardingCompleted', 'true', { expires: 7 });
             }
-          } catch (error: any) {
-            const status = error.response?.status;
+          } catch (error: unknown) {
+            const status = typeof error === 'object' && error !== null && 'response' in error
+              ? (error as { response?: { status?: number } }).response?.status
+              : undefined;
             if (status === 401 || status === 404 || status === 403) {
               Cookies.remove('authToken');
               Cookies.remove(AUTH_PRESENT_COOKIE);
@@ -84,6 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (credentials: LoginCredentials): Promise<void> => {
     try {
       const response = await authAPI.login(credentials);
+      disconnectSocket();
       Cookies.remove('authToken');
       removeToken();
       if (response.csrfToken) {
@@ -117,6 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = useCallback(async (data: RegisterData): Promise<AuthResponse> => {
     try {
       const response = await authAPI.register(data);
+      disconnectSocket();
 
       Cookies.remove('authToken');
       removeToken();
@@ -152,6 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    disconnectSocket();
     authAPI.logout().catch(() => undefined);
     Cookies.remove('authToken');
     Cookies.remove(AUTH_PRESENT_COOKIE);
@@ -164,6 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setAuth = useCallback((response: AuthResponse) => {
+    disconnectSocket();
     Cookies.remove('authToken');
     removeToken();
     if (response.csrfToken) {

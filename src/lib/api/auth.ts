@@ -1,6 +1,15 @@
 import apiClient from './client';
 import type { AuthResponse, LoginCredentials, RegisterData, User } from '@/types/auth';
 
+export interface SocketTicketResponse {
+  token: string;
+  expiresAt: string;
+}
+
+export async function getSocketTicket(): Promise<SocketTicketResponse> {
+  return apiClient.post('/auth/socket-ticket', {}) as Promise<SocketTicketResponse>;
+}
+
 export const authAPI = {
   register: async (data: RegisterData): Promise<AuthResponse> => {
     return apiClient.post('/auth/register', data) as Promise<AuthResponse>;

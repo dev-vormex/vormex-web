@@ -8,10 +8,12 @@ Create your env file first:
 cp .env.example .env.local
 ```
 
-By default, local development connects to `vormex-backend` on `http://localhost:5000`:
+The checked-in example uses the production routing shape:
 
-- `NEXT_PUBLIC_API_URL=http://localhost:5000/api`
-- `NEXT_PUBLIC_SOCKET_URL=http://localhost:5000`
+- `NEXT_PUBLIC_API_URL=/api` keeps REST and its HttpOnly auth cookies same-origin through the Next.js proxy.
+- `NEXT_PUBLIC_SOCKET_URL=https://vormex-backend.onrender.com` connects Socket.IO directly to Render with a short-lived ticket obtained from the REST API.
+
+For local development, uncomment the local override values at the bottom of `.env.example` after copying it to `.env.local`.
 
 First, run the development server:
 
@@ -30,6 +32,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 Required variables:
 
 - `NEXT_PUBLIC_API_URL` (preferred): full backend API base including `/api`
+- `NEXT_PUBLIC_SOCKET_URL`: backend origin used for Socket.IO; do not include `/api`
 - `NEXT_PUBLIC_BACKEND_URL` (optional fallback): backend origin without `/api`
 - `NEXT_PUBLIC_BASE_URL`: frontend origin for OAuth callback fallback
 - `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
@@ -50,6 +53,8 @@ To learn more about Next.js, take a look at the following resources:
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
 ## Deploy on Vercel
+
+Deploy `vormex-backend` first because the web socket client requires the backend `/api/auth/socket-ticket` endpoint. Then deploy this project with the production values from `.env.example`. The web client exchanges its same-origin session for a short-lived socket ticket.
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 

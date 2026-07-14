@@ -22,8 +22,9 @@ function resolveApiUrl(): string {
     return normalizeApiUrl(publicBackendUrl);
   }
 
-  // Previous local/reverse-proxy fallback: return '/api';
-  return 'https://vormex-backend.onrender.com/api';
+  // Production uses the same-origin Next.js rewrite so HttpOnly auth cookies
+  // stay first-party. Local development can override this in .env.local.
+  return '/api';
 }
 
 export const API_URL = resolveApiUrl();

@@ -3,6 +3,7 @@
 import { io, Socket } from 'socket.io-client';
 import { SOCKET_URL } from '@/lib/utils/constants';
 import type { ChatUser, Message } from '@/lib/api/chat';
+import { getSocketTicket, type SocketTicketResponse } from '@/lib/api/auth';
 
 let socket: Socket | null = null;
 let lifecycleHandlersRegistered = false;
@@ -10,11 +11,42 @@ let socketAuthenticated = false;
 let authenticatedUserId: string | null = null;
 const joinedChatRooms = new Set<string>();
 let feedRoomJoined = false;
-const CHAT_CONNECT_GRACE_MS = 1500;
-const CHAT_AUTH_GRACE_MS = 2500;
+const CHAT_CONNECT_GRACE_MS = 10000;
+const CHAT_AUTH_GRACE_MS = 5000;
 const CHAT_SEND_ACK_TIMEOUT_MS = 8000;
+const SOCKET_TICKET_REFRESH_SKEW_MS = 10_000;
 const DELIVERED_ACK_CACHE_LIMIT = 200;
 const acknowledgedDeliveredMessageIds = new Set<string>();
+let cachedSocketTicket: SocketTicketResponse | null = null;
+let socketTicketRequest: Promise<SocketTicketResponse> | null = null;
+
+function hasUsableSocketTicket(ticket: SocketTicketResponse | null): ticket is SocketTicketResponse {
+  if (!ticket?.token || !ticket.expiresAt) {
+    return false;
+  }
+
+  const expiresAt = Date.parse(ticket.expiresAt);
+  return Number.isFinite(expiresAt) && expiresAt - Date.now() > SOCKET_TICKET_REFRESH_SKEW_MS;
+}
+
+async function resolveSocketTicket(): Promise<SocketTicketResponse> {
+  if (hasUsableSocketTicket(cachedSocketTicket)) {
+    return cachedSocketTicket;
+  }
+
+  if (!socketTicketRequest) {
+    socketTicketRequest = getSocketTicket()
+      .then((ticket) => {
+        cachedSocketTicket = ticket;
+        return ticket;
+      })
+      .finally(() => {
+        socketTicketRequest = null;
+      });
+  }
+
+  return socketTicketRequest;
+}
 
 // Reaction types matching backend enum
 export type ReactionType = 'LIKE' | 'CELEBRATE' | 'SUPPORT' | 'INSIGHTFUL' | 'CURIOUS';
@@ -316,6 +348,7 @@ function ensureSocketLifecycle(sock: Socket): void {
   });
 
   sock.on('connect_error', (error) => {
+    cachedSocketTicket = null;
     const message = (error?.message || '').toLowerCase();
     if (message.includes('timeout')) {
       console.warn('Socket connection timeout. Verify backend is running on:', SOCKET_URL);
@@ -343,9 +376,23 @@ function getOrCreateSocket(): Socket {
   if (!socket) {
     socket = io(SOCKET_URL, {
       withCredentials: true,
+      // REST runs through vormex.in/api, while Socket.IO connects directly to
+      // Render. Fetch a short-lived ticket through the authenticated API proxy
+      // for every new Engine.IO session so the cross-origin handshake is valid.
+      auth: async (callback) => {
+        try {
+          const ticket = await resolveSocketTicket();
+          callback({ token: ticket.token });
+        } catch (error) {
+          console.error('Could not obtain realtime connection ticket:', error);
+          callback({ token: '' });
+        }
+      },
       transports: ['websocket', 'polling'],
+      upgrade: true,
+      rememberUpgrade: true,
       reconnection: true,
-      reconnectionAttempts: 10,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       randomizationFactor: 0.25,
@@ -450,6 +497,8 @@ export function disconnectSocket(): void {
     lifecycleHandlersRegistered = false;
     socketAuthenticated = false;
     authenticatedUserId = null;
+    cachedSocketTicket = null;
+    socketTicketRequest = null;
     acknowledgedDeliveredMessageIds.clear();
     joinedChatRooms.clear();
   }
