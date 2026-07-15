@@ -43,6 +43,7 @@ import {
   Layout,
   Film,
   Crown,
+  Bot,
 } from 'lucide-react';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { GitHubIntegration, MentionsDashboard } from '@/components/settings';
@@ -142,6 +143,14 @@ export default function MorePage() {
       onClick: openAgent,
       color: 'text-blue-500',
       subtext: 'Ask the app-aware assistant',
+    },
+    {
+      id: 'mcp-card-preview',
+      label: 'MCP Card Preview',
+      icon: Bot,
+      href: '/more/mcp-preview',
+      color: 'text-violet-500',
+      subtext: 'Test the current ChatGPT card design',
     },
     {
       id: 'premium',
@@ -303,14 +312,14 @@ export default function MorePage() {
       id: 'help',
       label: 'Help & Support',
       icon: HelpCircle,
-      href: '#',
+      href: '/support',
       color: 'text-cyan-500',
     },
     {
       id: 'terms',
       label: 'Terms of Service',
       icon: FileText,
-      href: '#',
+      href: '/terms',
       color: 'text-gray-500',
     },
     {

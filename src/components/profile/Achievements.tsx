@@ -21,8 +21,10 @@ import {
   ProfileSection,
   RevealItem,
   SectionAddButton,
+  SectionEditButton,
   SectionEmptyState,
 } from './ProfileSection';
+import { ProfileEntryLogo } from './ProfileEntryLogo';
 import type { Achievement } from '@/types/profile';
 
 interface AchievementsProps {
@@ -34,11 +36,11 @@ interface AchievementsProps {
 
 // Achievement type icons
 const TYPE_ICONS: Record<string, React.ReactNode> = {
-  Hackathon: <Target className="w-5 h-5 text-white" />,
-  Competition: <Trophy className="w-5 h-5 text-white" />,
-  Award: <Medal className="w-5 h-5 text-white" />,
-  Scholarship: <Gift className="w-5 h-5 text-white" />,
-  Recognition: <Sparkles className="w-5 h-5 text-white" />,
+  Hackathon: <Target className="h-5 w-5" />,
+  Competition: <Trophy className="h-5 w-5" />,
+  Award: <Medal className="h-5 w-5" />,
+  Scholarship: <Gift className="h-5 w-5" />,
+  Recognition: <Sparkles className="h-5 w-5" />,
 };
 
 export function Achievements({
@@ -48,6 +50,7 @@ export function Achievements({
   onEditAchievement,
 }: AchievementsProps) {
   const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null);
+  const [editing, setEditing] = useState(false);
 
   if (achievements.length === 0 && !isOwner) {
     return null;
@@ -70,11 +73,16 @@ export function Achievements({
   };
 
   const isImageUrl = (url: string) => {
-    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.avif', '.heic', '.heif'];
     const lowercaseUrl = url.toLowerCase();
     return imageExtensions.some(ext => lowercaseUrl.includes(ext)) ||
       lowercaseUrl.includes('/certificates/') ||
-      lowercaseUrl.includes('storage.bunnycdn.com');
+      lowercaseUrl.includes('bunnycdn.com') ||
+      lowercaseUrl.includes('b-cdn.net') ||
+      lowercaseUrl.includes('cloudinary.com') ||
+      lowercaseUrl.includes('imgur.com') ||
+      lowercaseUrl.includes('/image/') ||
+      lowercaseUrl.includes('/photo/');
   };
 
   return (
@@ -82,11 +90,21 @@ export function Achievements({
       icon={<Trophy className="w-5 h-5" />}
       title="Achievements"
       count={achievements.length}
-      action={
-        isOwner && onAddAchievement ? (
-          <SectionAddButton onClick={onAddAchievement} label="Add Achievement" />
-        ) : undefined
-      }
+      action={isOwner ? (
+        <>
+          {onAddAchievement && <SectionAddButton onClick={onAddAchievement} label="Add Achievement" />}
+          {onEditAchievement && achievements.length > 0 && (
+            <SectionEditButton
+              onClick={() => {
+                if (achievements.length === 1) onEditAchievement(achievements[0]);
+                else setEditing((current) => !current);
+              }}
+              label="Edit Achievements"
+              active={editing}
+            />
+          )}
+        </>
+      ) : undefined}
     >
       {achievements.length === 0 ? (
         <SectionEmptyState
@@ -96,31 +114,53 @@ export function Achievements({
           onAction={isOwner && onAddAchievement ? onAddAchievement : undefined}
         />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
           {achievements.map((achievement, index) => {
-            const icon = TYPE_ICONS[achievement.type] || <Award className="w-5 h-5 text-white" />;
+            const icon = TYPE_ICONS[achievement.type] || <Award className="h-5 w-5" />;
             return (
-              <RevealItem key={achievement.id} index={index}>
-                <div className="group relative h-full rounded-2xl bg-white dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 p-5 hover:border-blue-200 dark:hover:border-blue-500/40 hover:shadow-lg hover:shadow-neutral-900/5 dark:hover:shadow-black/30 hover:-translate-y-0.5 transition-all duration-300">
-                  <div className="flex gap-4">
-                    {/* Icon */}
-                    <div
-                      className="w-12 h-12 shrink-0 rounded-xl flex items-center justify-center shadow-sm"
-                      style={{ backgroundColor: achievement.color || '#2563eb' }}
-                    >
-                      {icon}
-                    </div>
+              <RevealItem key={achievement.id} index={index} className="group py-5 first:pt-0 last:pb-0">
+                  <div className="flex items-start gap-3 sm:gap-4">
+                    <ProfileEntryLogo
+                      logo={achievement.certificateUrl && isImageUrl(achievement.certificateUrl) ? achievement.certificateUrl : null}
+                      label={achievement.organization}
+                      fallback={icon}
+                    />
 
-                    <div className="flex-1 min-w-0 pr-14">
-                      <h4 className="text-sm font-semibold text-neutral-900 dark:text-white truncate mb-0.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2 sm:gap-4">
+                        <div className="min-w-0">
+                      <h4 className="break-words text-[15px] font-semibold text-neutral-900 dark:text-white">
                         {achievement.title}
                       </h4>
-                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2.5">
+                      <p className="mt-1 break-words text-sm font-medium text-neutral-600 dark:text-neutral-300">
                         {achievement.organization}
                       </p>
+                        </div>
 
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-400 dark:text-neutral-500 mb-3">
-                        <span className="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-[11px] font-semibold text-blue-700 dark:text-blue-400">
+                        <div className="flex shrink-0 gap-1">
+                          {achievement.certificateUrl && (
+                            <button
+                              onClick={() => setSelectedAchievement(achievement)}
+                              className="p-2 text-neutral-400 transition-colors hover:text-neutral-950 dark:hover:text-white"
+                              title="View certificate"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          {isOwner && onEditAchievement && editing && (
+                            <button
+                              onClick={() => onEditAchievement(achievement)}
+                              className="p-2 text-neutral-400 transition-colors hover:text-neutral-950 dark:hover:text-white"
+                              title="Edit achievement"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
+                        <span className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide dark:border-neutral-700">
                           {achievement.type}
                         </span>
                         <div className="flex items-center gap-1">
@@ -130,35 +170,13 @@ export function Achievements({
                       </div>
 
                       {achievement.description && (
-                        <p className="text-[13px] text-neutral-600 dark:text-neutral-400 leading-relaxed line-clamp-2">
+                        <p className="mt-3 line-clamp-2 whitespace-pre-wrap text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
                           {achievement.description}
                         </p>
                       )}
                     </div>
                   </div>
 
-                  {/* Actions */}
-                  <div className="absolute top-4 right-4 flex gap-1">
-                    {achievement.certificateUrl && (
-                      <button
-                        onClick={() => setSelectedAchievement(achievement)}
-                        className="opacity-0 group-hover:opacity-100 p-2 rounded-full text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all"
-                        title="View certificate"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    {isOwner && onEditAchievement && (
-                      <button
-                        onClick={() => onEditAchievement(achievement)}
-                        className="opacity-0 group-hover:opacity-100 p-2 rounded-full text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all"
-                        title="Edit achievement"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
               </RevealItem>
             );
           })}
@@ -189,10 +207,7 @@ export function Achievements({
                   {/* Header */}
                   <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
                     <Dialog.Title className="text-lg font-semibold tracking-tight text-neutral-900 dark:text-white flex items-center gap-3">
-                      <div
-                        className="w-9 h-9 rounded-xl flex items-center justify-center"
-                        style={{ backgroundColor: selectedAchievement.color || '#2563eb' }}
-                      >
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
                         {TYPE_ICONS[selectedAchievement.type] || <Trophy className="w-5 h-5 text-white" />}
                       </div>
                       Achievement

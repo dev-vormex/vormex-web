@@ -16,8 +16,10 @@ import {
   ProfileSection,
   RevealItem,
   SectionAddButton,
+  SectionEditButton,
   SectionEmptyState,
 } from './ProfileSection';
+import { ProfileEntryLogo } from './ProfileEntryLogo';
 import type { Certificate } from '@/types/profile';
 
 interface CertificatesGridProps {
@@ -34,6 +36,7 @@ export function CertificatesGrid({
   onEditCertificate,
 }: CertificatesGridProps) {
   const [selectedCertificate, setSelectedCertificate] = useState<Certificate | null>(null);
+  const [editing, setEditing] = useState(false);
 
   if (certificates.length === 0 && !isOwner) {
     return null;
@@ -62,11 +65,16 @@ export function CertificatesGrid({
 
   // Check if URL is an image
   const isImageUrl = (url: string) => {
-    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.avif', '.heic', '.heif'];
     const lowercaseUrl = url.toLowerCase();
     return imageExtensions.some(ext => lowercaseUrl.includes(ext)) ||
       lowercaseUrl.includes('/certificates/') ||
-      lowercaseUrl.includes('storage.bunnycdn.com');
+      lowercaseUrl.includes('bunnycdn.com') ||
+      lowercaseUrl.includes('b-cdn.net') ||
+      lowercaseUrl.includes('cloudinary.com') ||
+      lowercaseUrl.includes('imgur.com') ||
+      lowercaseUrl.includes('/image/') ||
+      lowercaseUrl.includes('/photo/');
   };
 
   return (
@@ -74,11 +82,21 @@ export function CertificatesGrid({
       icon={<Award className="w-5 h-5" />}
       title="Licenses & Certifications"
       count={certificates.length}
-      action={
-        isOwner && onAddCertificate ? (
-          <SectionAddButton onClick={onAddCertificate} label="Add Certificate" />
-        ) : undefined
-      }
+      action={isOwner ? (
+        <>
+          {onAddCertificate && <SectionAddButton onClick={onAddCertificate} label="Add Certificate" />}
+          {onEditCertificate && certificates.length > 0 && (
+            <SectionEditButton
+              onClick={() => {
+                if (certificates.length === 1) onEditCertificate(certificates[0]);
+                else setEditing((current) => !current);
+              }}
+              label="Edit Certifications"
+              active={editing}
+            />
+          )}
+        </>
+      ) : undefined}
     >
       {certificates.length === 0 ? (
         <SectionEmptyState
@@ -88,64 +106,63 @@ export function CertificatesGrid({
           onAction={isOwner && onAddCertificate ? onAddCertificate : undefined}
         />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
           {certificates.map((cert, index) => (
-            <RevealItem key={cert.id} index={index}>
-              <div className="group relative h-full rounded-2xl bg-white dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 p-5 hover:border-blue-200 dark:hover:border-blue-500/40 hover:shadow-lg hover:shadow-neutral-900/5 dark:hover:shadow-black/30 hover:-translate-y-0.5 transition-all duration-300">
-                <div className="flex gap-4">
-                  {/* Icon */}
-                  <div
-                    className="w-12 h-12 shrink-0 rounded-xl flex items-center justify-center shadow-sm"
-                    style={{ backgroundColor: cert.color || '#2563eb' }}
-                  >
-                    <Award className="w-6 h-6 text-white" />
-                  </div>
+            <RevealItem key={cert.id} index={index} className="group py-5 first:pt-0 last:pb-0">
+              <div className="flex items-start gap-3 sm:gap-4">
+                  <ProfileEntryLogo
+                    logo={cert.credentialUrl && isImageUrl(cert.credentialUrl) ? cert.credentialUrl : null}
+                    label={cert.issuingOrg}
+                    fallback={<Building className="h-5 w-5 text-neutral-400" />}
+                  />
 
-                  <div className="flex-1 min-w-0 pr-14">
-                    <h4 className="text-sm font-semibold text-neutral-900 dark:text-white truncate mb-0.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2 sm:gap-4">
+                      <div className="min-w-0">
+                    <h4 className="break-words text-[15px] font-semibold text-neutral-900 dark:text-white">
                       {cert.name}
                     </h4>
-                    <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3">
+                    <p className="mt-1 break-words text-sm font-medium text-neutral-600 dark:text-neutral-300">
                       {cert.issuingOrg}
                     </p>
+                      </div>
 
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-neutral-400 dark:text-neutral-500">
+                      <div className="flex shrink-0 gap-1">
+                        {cert.credentialUrl && (
+                          <button
+                            onClick={() => setSelectedCertificate(cert)}
+                            className="p-2 text-neutral-400 transition-colors hover:text-neutral-950 dark:hover:text-white"
+                            title="View certificate"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        {isOwner && onEditCertificate && editing && (
+                          <button
+                            onClick={() => onEditCertificate(cert)}
+                            className="p-2 text-neutral-400 transition-colors hover:text-neutral-950 dark:hover:text-white"
+                            title="Edit certificate"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-neutral-500 dark:text-neutral-400">
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5" />
                         {formatDate(cert.issueDate)}
                       </div>
                       {isExpired(cert) ? (
-                        <span className="px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-500/10 text-[11px] font-semibold text-red-600 dark:text-red-400">Expired</span>
+                        <span className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide dark:border-neutral-700">Expired</span>
                       ) : cert.doesNotExpire ? (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">No Expiration</span>
+                        <span className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide dark:border-neutral-700">No Expiration</span>
                       ) : cert.expiryDate && (
                         <span>Expires {formatDate(cert.expiryDate)}</span>
                       )}
                     </div>
                   </div>
-                </div>
-
-                {/* Actions */}
-                <div className="absolute top-4 right-4 flex gap-1">
-                  {cert.credentialUrl && (
-                    <button
-                      onClick={() => setSelectedCertificate(cert)}
-                      className="opacity-0 group-hover:opacity-100 p-2 rounded-full text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all"
-                      title="View certificate"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  {isOwner && onEditCertificate && (
-                    <button
-                      onClick={() => onEditCertificate(cert)}
-                      className="opacity-0 group-hover:opacity-100 p-2 rounded-full text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all"
-                      title="Edit certificate"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
               </div>
             </RevealItem>
           ))}
@@ -176,11 +193,8 @@ export function CertificatesGrid({
                   {/* Header */}
                   <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
                     <Dialog.Title className="text-lg font-semibold tracking-tight text-neutral-900 dark:text-white flex items-center gap-3">
-                      <div
-                        className="w-9 h-9 rounded-xl flex items-center justify-center"
-                        style={{ backgroundColor: selectedCertificate.color || '#2563eb' }}
-                      >
-                        <Award className="w-5 h-5 text-white" />
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800">
+                        <Award className="h-5 w-5 text-neutral-500 dark:text-neutral-300" />
                       </div>
                       Certificate Details
                     </Dialog.Title>

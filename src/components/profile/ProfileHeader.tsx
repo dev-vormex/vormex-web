@@ -281,7 +281,7 @@ export function ProfileHeader({
   };
 
   return (
-    <div>
+    <div className="min-w-0 max-w-full overflow-x-clip">
       {/* ══════════════════════════════════════════════════════════════════════════
           BANNER SECTION - LinkedIn Style with Customizable Cover
       ══════════════════════════════════════════════════════════════════════════ */}
@@ -306,12 +306,12 @@ export function ProfileHeader({
       {/* ══════════════════════════════════════════════════════════════════════════════
           MAIN PROFILE CARD - Clean, Spacious Layout
       ══════════════════════════════════════════════════════════════════════════════ */}
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full min-w-0 max-w-5xl px-3 sm:px-6 lg:px-8">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, ease: [0.22, 0.61, 0.36, 1] }}
-          className="relative bg-white dark:bg-neutral-900 rounded-2xl shadow-xl shadow-neutral-900/[0.06] dark:shadow-black/40 border border-gray-100 dark:border-neutral-800 -mt-16 sm:-mt-20"
+          className="relative min-w-0 rounded-2xl border border-gray-100 bg-white shadow-xl shadow-neutral-900/[0.06] dark:border-neutral-800 dark:bg-neutral-900 dark:shadow-black/40 -mt-16 sm:-mt-20"
         >
           {/* Profile content wrapper with generous padding */}
           <div className="px-4 sm:px-8 lg:px-10 pt-20 sm:pt-4 pb-6">

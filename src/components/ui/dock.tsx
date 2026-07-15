@@ -297,8 +297,11 @@ export function VormexDock() {
     '/onboarding',
     '/messages/',
     '/vormex-delete-account',
+    '/privacy',
+    '/terms',
+    '/support',
   ];
-  if (hideDockPrefixes.some((prefix) => pathname.startsWith(prefix))) {
+  if (pathname === '/' || hideDockPrefixes.some((prefix) => pathname.startsWith(prefix))) {
     return null;
   }
 

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, ChevronDown, Flame, TrendingUp } from 'lucide-react';
+import { ChevronDown, Flame, TrendingUp } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import type { ActivityHeatmapDay, ActivityYearsResponse } from '@/types/profile';
 
@@ -33,7 +33,6 @@ const LEVEL_COLORS_HOVER = {
 };
 
 export function ActivityCalendar({
-  userId,
   activityData,
   currentStreak,
   longestStreak,
@@ -186,11 +185,10 @@ export function ActivityCalendar({
   }, [weeks, activityData]);
 
   return (
-    <Card className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm hover:shadow-lg hover:shadow-neutral-900/5 dark:hover:shadow-black/30 transition-shadow duration-300 border border-neutral-200/80 dark:border-neutral-800">
+    <Card className="rounded-xl border border-neutral-200 bg-white shadow-none dark:border-neutral-800 dark:bg-neutral-900">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
+        <div className="flex items-center">
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Activity</h2>
           <span className="text-gray-600 dark:text-neutral-400 text-xs sm:text-sm ml-1 sm:ml-2">
             {calculatedTotal} contributions
@@ -201,12 +199,12 @@ export function ActivityCalendar({
         <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           {/* Streak Stats */}
           <div className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm">
-            <div className="flex items-center gap-1 sm:gap-1.5 text-orange-400">
+            <div className="flex items-center gap-1 text-neutral-600 sm:gap-1.5 dark:text-neutral-300">
               <Flame className="w-3 h-3 sm:w-4 sm:h-4" />
               <span className="font-medium">{currentStreak}</span>
               <span className="text-gray-500 dark:text-neutral-500 hidden sm:inline">current</span>
             </div>
-            <div className="flex items-center gap-1 sm:gap-1.5 text-purple-400">
+            <div className="flex items-center gap-1 text-neutral-600 sm:gap-1.5 dark:text-neutral-300">
               <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" />
               <span className="font-medium">{longestStreak}</span>
               <span className="text-gray-500 dark:text-neutral-500 hidden sm:inline">longest</span>

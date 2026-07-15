@@ -47,6 +47,10 @@ export const authAPI = {
     return apiClient.post('/auth/reset-password', { token, newPassword }) as Promise<{ message: string }>;
   },
 
+  verifyEmailOtp: async (email: string, code: string): Promise<AuthResponse> => {
+    return apiClient.post('/auth/verify-email', { email, code }) as Promise<AuthResponse>;
+  },
+
   verifyEmail: async (token: string): Promise<{ message: string }> => {
     return apiClient.get(`/auth/verify-email?token=${encodeURIComponent(token)}`) as Promise<{ message: string }>;
   },

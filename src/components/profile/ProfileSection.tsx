@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Plus } from 'lucide-react';
+import { Pencil, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -21,10 +21,10 @@ interface RevealProps {
 export function Reveal({ children, className, delay = 0 }: RevealProps) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 40 }}
+      initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-64px 0px' }}
-      transition={{ duration: 0.6, delay, ease: EASE }}
+      transition={{ duration: 0.45, delay, ease: EASE }}
       className={className}
     >
       {children}
@@ -43,10 +43,10 @@ interface RevealItemProps {
 export function RevealItem({ children, index = 0, className, onClick }: RevealItemProps) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 24 }}
+      initial={{ opacity: 0, y: 12 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-40px 0px' }}
-      transition={{ duration: 0.5, delay: Math.min(index, 8) * 0.06, ease: EASE }}
+      transition={{ duration: 0.35, delay: Math.min(index, 8) * 0.04, ease: EASE }}
       className={className}
       onClick={onClick}
     >
@@ -73,7 +73,6 @@ interface ProfileSectionProps {
 }
 
 export function ProfileSection({
-  icon,
   title,
   count,
   subtitle,
@@ -84,23 +83,18 @@ export function ProfileSection({
   contentClassName,
 }: ProfileSectionProps) {
   return (
-    <Reveal>
+    <Reveal className="min-w-0 max-w-full">
       <section
         className={cn(
-          'rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900',
-          'shadow-sm hover:shadow-lg hover:shadow-neutral-900/5 dark:hover:shadow-black/30',
-          'transition-shadow duration-300 overflow-hidden',
+          'w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900',
           className
         )}
       >
-        <div className="px-5 sm:px-6 py-5 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 dark:border-neutral-800">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 shrink-0 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-              {icon}
-            </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-2 pt-4 sm:px-6 sm:pb-3 sm:pt-5">
+          <div className="flex min-w-0 items-center">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-semibold tracking-tight text-neutral-900 dark:text-white truncate">
+                <h2 className="break-words text-base font-semibold tracking-tight text-neutral-900 dark:text-white sm:text-lg">
                   {title}
                 </h2>
                 {typeof count === 'number' && count > 0 && (
@@ -110,19 +104,19 @@ export function ProfileSection({
                 )}
               </div>
               {subtitle && (
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 truncate">
+                <p className="mt-0.5 break-words text-xs text-neutral-500 dark:text-neutral-400">
                   {subtitle}
                 </p>
               )}
             </div>
           </div>
 
-          {action && <div className="flex items-center gap-2">{action}</div>}
+          {action && <div className="flex max-w-full items-center gap-2">{action}</div>}
         </div>
 
         {headerExtra}
 
-        <div className={cn('p-5 sm:p-6', contentClassName)}>{children}</div>
+        <div className={cn('min-w-0 max-w-full p-4 sm:p-6', contentClassName)}>{children}</div>
       </section>
     </Reveal>
   );
@@ -141,10 +135,39 @@ export function SectionAddButton({ onClick, label = 'Add' }: SectionAddButtonPro
   return (
     <button
       onClick={onClick}
-      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 text-xs font-semibold hover:bg-blue-100 dark:hover:bg-blue-500/20 active:scale-95 transition-all"
+      className="inline-flex h-9 w-9 items-center justify-center text-neutral-500 transition-colors hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white"
+      aria-label={label}
+      title={label}
     >
-      <Plus className="w-3.5 h-3.5" />
-      {label}
+      <Plus className="h-5 w-5" />
+    </button>
+  );
+}
+
+interface SectionEditButtonProps {
+  onClick: () => void;
+  label?: string;
+  active?: boolean;
+}
+
+export function SectionEditButton({
+  onClick,
+  label = 'Edit',
+  active = false,
+}: SectionEditButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex h-9 w-9 items-center justify-center transition-colors ${
+        active
+          ? 'text-neutral-950 dark:text-white'
+          : 'text-neutral-500 hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white'
+      }`}
+      aria-label={label}
+      title={label}
+      aria-pressed={active}
+    >
+      <Pencil className="h-5 w-5" />
     </button>
   );
 }
@@ -158,15 +181,15 @@ interface SectionEmptyStateProps {
 
 export function SectionEmptyState({ icon, message, actionLabel, onAction }: SectionEmptyStateProps) {
   return (
-    <div className="text-center py-12 px-6 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-800/30">
-      <div className="w-12 h-12 mx-auto mb-4 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 shadow-sm flex items-center justify-center text-neutral-400">
+    <div className="rounded-lg border border-dashed border-neutral-300 px-4 py-10 text-center dark:border-neutral-700">
+      <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-neutral-400 dark:border-neutral-700 dark:bg-neutral-800">
         {icon}
       </div>
       <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">{message}</p>
       {onAction && actionLabel && (
         <button
           onClick={onAction}
-          className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-sm shadow-blue-600/20 active:scale-95 transition-all"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
         >
           <Plus className="w-4 h-4" />
           {actionLabel}

@@ -13,6 +13,7 @@ import {
   ProfileSection,
   RevealItem,
   SectionAddButton,
+  SectionEditButton,
   SectionEmptyState,
 } from './ProfileSection';
 import { ProjectDetailModal } from './ProjectDetailModal';
@@ -34,10 +35,12 @@ export function ProjectsGrid({
   onEditProject,
 }: ProjectsGridProps) {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [editing, setEditing] = useState(false);
 
   // Separate featured and regular projects
   const featuredProjects = projects.filter((p) => p.featured);
   const regularProjects = projects.filter((p) => !p.featured);
+  const orderedProjects = [...featuredProjects, ...regularProjects];
 
   if (projects.length === 0 && !isOwner) {
     return null;
@@ -49,11 +52,21 @@ export function ProjectsGrid({
         icon={<Code className="w-5 h-5" />}
         title="Projects & Work"
         count={projects.length}
-        action={
-          isOwner && onAddProject ? (
-            <SectionAddButton onClick={onAddProject} label="Add Project" />
-          ) : undefined
-        }
+        action={isOwner ? (
+          <>
+            {onAddProject && <SectionAddButton onClick={onAddProject} label="Add Project" />}
+            {onEditProject && orderedProjects.length > 0 && (
+              <SectionEditButton
+                onClick={() => {
+                  if (orderedProjects.length === 1) onEditProject(orderedProjects[0]);
+                  else setEditing((current) => !current);
+                }}
+                label="Edit Projects"
+                active={editing}
+              />
+            )}
+          </>
+        ) : undefined}
       >
         {projects.length === 0 ? (
           <SectionEmptyState
@@ -63,54 +76,23 @@ export function ProjectsGrid({
             onAction={isOwner && onAddProject ? onAddProject : undefined}
           />
         ) : (
-          <div className="space-y-8">
-            {/* Featured Projects */}
-            {featuredProjects.length > 0 && (
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
-                  <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                  Featured Work
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  {featuredProjects.map((project, index) => (
-                    <ProjectCard
-                      key={project.id}
-                      project={project}
-                      isOwner={isOwner}
-                      onToggleFeatured={onToggleFeatured}
-                      onEdit={onEditProject}
-                      onClick={() => setSelectedProject(project)}
-                      index={index}
-                      featured
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Regular Projects */}
-            {regularProjects.length > 0 && (
-              <div className="space-y-4">
-                {featuredProjects.length > 0 && (
-                  <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 pt-2">
-                    All Projects
-                  </h3>
-                )}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {regularProjects.map((project, index) => (
-                    <ProjectCard
-                      key={project.id}
-                      project={project}
-                      isOwner={isOwner}
-                      onToggleFeatured={onToggleFeatured}
-                      onEdit={onEditProject}
-                      onClick={() => setSelectedProject(project)}
-                      index={index}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+          <div
+            className="-mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-3 pt-1 scroll-smooth overscroll-x-contain"
+            aria-label="Projects"
+          >
+            {orderedProjects.map((project, index) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                isOwner={isOwner}
+                onToggleFeatured={onToggleFeatured}
+                onEdit={onEditProject}
+                onClick={() => setSelectedProject(project)}
+                index={index}
+                featured={project.featured}
+                editing={editing}
+              />
+            ))}
           </div>
         )}
       </ProfileSection>
@@ -132,6 +114,7 @@ interface ProjectCardProps {
   onClick: () => void;
   index: number;
   featured?: boolean;
+  editing?: boolean;
 }
 
 function ProjectCard({
@@ -142,6 +125,7 @@ function ProjectCard({
   onClick,
   index,
   featured,
+  editing,
 }: ProjectCardProps) {
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -151,11 +135,14 @@ function ProjectCard({
   };
 
   return (
-    <RevealItem index={index} className="h-full">
+    <RevealItem
+      index={index}
+      className="h-auto w-[82vw] min-w-[16rem] max-w-[20rem] flex-none snap-start sm:w-80"
+    >
       <div
         onClick={onClick}
         className={`group relative h-full flex flex-col rounded-2xl overflow-hidden bg-white dark:bg-neutral-800/60 border cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-neutral-900/10 dark:hover:shadow-black/40 ${featured
-          ? 'border-blue-200 dark:border-blue-500/30 ring-1 ring-blue-100 dark:ring-blue-500/20'
+          ? 'border-neutral-300 ring-1 ring-neutral-200 dark:border-neutral-600 dark:ring-neutral-700'
           : 'border-neutral-200 dark:border-neutral-700'
           }`}
       >
@@ -182,8 +169,8 @@ function ProjectCard({
           )}
 
           {/* Hover Actions Overlay */}
-          {isOwner && (
-            <div className="absolute top-3 right-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10" onClick={(e) => e.stopPropagation()}>
+          {isOwner && editing && (
+            <div className="absolute right-3 top-3 z-10 flex gap-1.5" onClick={(e) => e.stopPropagation()}>
               {onToggleFeatured && (
                 <button
                   onClick={() => onToggleFeatured(project.id)}
@@ -211,7 +198,7 @@ function ProjectCard({
 
         {/* Content */}
         <div className="p-5 flex flex-col flex-1">
-          <h4 className="text-[15px] font-semibold text-neutral-900 dark:text-white mb-0.5 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+          <h4 className="mb-0.5 break-words text-[15px] font-semibold text-neutral-900 dark:text-white">
             {project.name}
           </h4>
 
@@ -229,7 +216,7 @@ function ProjectCard({
               {project.techStack.slice(0, 3).map((tech) => (
                 <span
                   key={tech}
-                  className="px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-500/10 text-[11px] font-medium text-blue-700 dark:text-blue-400"
+                  className="rounded-md bg-neutral-100 px-2.5 py-1 text-[11px] font-medium text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300"
                 >
                   {tech}
                 </span>

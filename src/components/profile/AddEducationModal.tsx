@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
@@ -11,24 +11,31 @@ import {
     Award,
     Loader2,
     Check,
+    ImagePlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { createEducation } from '@/lib/api/profile';
+import { ImageUploadModal } from './ImageUploadModal';
+import { createEducation, updateEducation } from '@/lib/api/profile';
 import type { EducationInput, Education } from '@/types/profile';
 
 interface AddEducationModalProps {
     isOpen: boolean;
     onClose: () => void;
     onEducationAdded: (education: Education) => void;
+    educationToEdit?: Education | null;
+    onEducationUpdated?: (education: Education) => void;
 }
 
 export function AddEducationModal({
     isOpen,
     onClose,
     onEducationAdded,
+    educationToEdit,
+    onEducationUpdated,
 }: AddEducationModalProps) {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [imageUploadOpen, setImageUploadOpen] = useState(false);
 
     const [formData, setFormData] = useState<EducationInput>({
         school: '',
@@ -40,7 +47,42 @@ export function AddEducationModal({
         grade: '',
         activities: '',
         description: '',
+        logo: '',
     });
+
+    useEffect(() => {
+        if (!isOpen) return;
+
+        if (educationToEdit) {
+            setFormData({
+                school: educationToEdit.school,
+                degree: educationToEdit.degree,
+                fieldOfStudy: educationToEdit.fieldOfStudy,
+                startDate: educationToEdit.startDate.split('T')[0],
+                endDate: educationToEdit.endDate?.split('T')[0] || '',
+                isCurrent: educationToEdit.isCurrent,
+                grade: educationToEdit.grade || '',
+                activities: educationToEdit.activities || '',
+                description: educationToEdit.description || '',
+                logo: educationToEdit.logo || '',
+            });
+        } else {
+            setFormData({
+                school: '',
+                degree: '',
+                fieldOfStudy: '',
+                startDate: '',
+                endDate: '',
+                isCurrent: false,
+                grade: '',
+                activities: '',
+                description: '',
+                logo: '',
+            });
+        }
+
+        setError(null);
+    }, [isOpen, educationToEdit]);
 
     const handleChange = (
         e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -59,6 +101,11 @@ export function AddEducationModal({
             [name]: checked,
             ...(name === 'isCurrent' && checked ? { endDate: '' } : {}),
         }));
+    };
+
+    const handleLogoUploaded = (logoUrl: string) => {
+        setFormData((prev) => ({ ...prev, logo: logoUrl }));
+        setImageUploadOpen(false);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -81,30 +128,28 @@ export function AddEducationModal({
         setError(null);
 
         try {
-            const education = await createEducation(formData);
-            onEducationAdded(education);
-            // Reset form
-            setFormData({
-                school: '',
-                degree: '',
-                fieldOfStudy: '',
-                startDate: '',
-                endDate: '',
-                isCurrent: false,
-                grade: '',
-                activities: '',
-                description: '',
-            });
+            if (educationToEdit && onEducationUpdated) {
+                const education = await updateEducation(educationToEdit.id, formData);
+                onEducationUpdated(education);
+            } else {
+                const education = await createEducation(formData);
+                onEducationAdded(education);
+            }
             onClose();
-        } catch (err: any) {
-            setError(err.response?.data?.error || 'Failed to add education');
+        } catch (err: unknown) {
+            const responseError = typeof err === 'object' && err !== null && 'response' in err
+                ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+                : null;
+            const message = responseError || (educationToEdit ? 'Failed to update education' : 'Failed to add education');
+            setError(message);
         } finally {
             setSaving(false);
         }
     };
 
     return (
-        <Dialog.Root open={isOpen} onOpenChange={onClose}>
+        <>
+        <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <Dialog.Portal>
                 <AnimatePresence>
                     {isOpen && (
@@ -130,7 +175,7 @@ export function AddEducationModal({
                                         {/* Header */}
                                         <div className="p-6 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
                                             <Dialog.Title className="text-xl font-bold tracking-tight text-neutral-900 dark:text-white uppercase">
-                                                Add Education
+                                                {educationToEdit ? 'Edit Education' : 'Add Education'}
                                             </Dialog.Title>
                                             <Dialog.Close asChild>
                                                 <button className="text-neutral-400 hover:text-black dark:hover:text-white transition-colors">
@@ -146,6 +191,24 @@ export function AddEducationModal({
                                                     {error}
                                                 </div>
                                             )}
+
+                                            <div>
+                                                <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-neutral-500">Institution logo</label>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setImageUploadOpen(true)}
+                                                    className="flex h-24 w-24 items-center justify-center overflow-hidden border border-dashed border-neutral-300 bg-neutral-50 transition-colors hover:border-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:border-white"
+                                                >
+                                                    {formData.logo ? (
+                                                        <img src={formData.logo} alt="Institution logo" className="h-full w-full object-contain p-2" />
+                                                    ) : (
+                                                        <span className="flex flex-col items-center gap-1.5 text-xs text-neutral-400">
+                                                            <ImagePlus className="h-5 w-5" />
+                                                            Add logo
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            </div>
 
                                             {/* School Name */}
                                             <div>
@@ -298,10 +361,10 @@ export function AddEducationModal({
                                                     {saving ? (
                                                         <>
                                                             <Loader2 className="w-3 h-3 mr-2 animate-spin" />
-                                                            Adding...
+                                                            {educationToEdit ? 'Saving...' : 'Adding...'}
                                                         </>
                                                     ) : (
-                                                        'Add Education'
+                                                        educationToEdit ? 'Save Changes' : 'Add Education'
                                                     )}
                                                 </Button>
                                             </div>
@@ -314,5 +377,12 @@ export function AddEducationModal({
                 </AnimatePresence>
             </Dialog.Portal>
         </Dialog.Root>
+        <ImageUploadModal
+            isOpen={imageUploadOpen}
+            onClose={() => setImageUploadOpen(false)}
+            type="logo"
+            onImageUpdated={handleLogoUploaded}
+        />
+        </>
     );
 }

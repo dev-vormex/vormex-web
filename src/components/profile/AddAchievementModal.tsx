@@ -10,32 +10,15 @@ import {
   Medal,
   Gift,
   Sparkles,
-  Loader2,
   Calendar,
   Building,
   Link as LinkIcon,
-  FileText,
   Upload,
-  ImageIcon,
-  Trash2,
-  Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { createAchievement, updateAchievement } from '@/lib/api/profile';
 import { uploadCertificate } from '@/lib/api/posts';
 import type { Achievement, AchievementInput } from '@/types/profile';
-
-const CARD_COLORS = [
-  { name: 'Neutral', value: '#525252' },
-  { name: 'Red', value: '#ef4444' },
-  { name: 'Orange', value: '#f97316' },
-  { name: 'Amber', value: '#f59e0b' },
-  { name: 'Green', value: '#10b981' },
-  { name: 'Blue', value: '#3b82f6' },
-  { name: 'Indigo', value: '#6366f1' },
-  { name: 'Purple', value: '#8b5cf6' },
-  { name: 'Pink', value: '#ec4899' },
-];
 
 interface AddAchievementModalProps {
   isOpen: boolean;
@@ -75,7 +58,6 @@ export function AddAchievementModal({
   const [certificateFile, setCertificateFile] = useState<File | null>(null);
   const [certificatePreview, setCertificatePreview] = useState<string | null>(null);
   const [uploadMethod, setUploadMethod] = useState<'url' | 'file'>('file');
-  const [selectedColor, setSelectedColor] = useState(CARD_COLORS[0].value);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -88,7 +70,6 @@ export function AddAchievementModal({
         setDate(achievementToEdit.date.split('T')[0]);
         setDescription(achievementToEdit.description || '');
         setCertificateUrl(achievementToEdit.certificateUrl || '');
-        setSelectedColor(achievementToEdit.color || CARD_COLORS[0].value);
 
         if (achievementToEdit.certificateUrl) {
           if (achievementToEdit.certificateUrl.match(/\.(jpeg|jpg|png|webp)/i) ||
@@ -118,7 +99,6 @@ export function AddAchievementModal({
     setCertificateFile(null);
     setCertificatePreview(null);
     setUploadMethod('file');
-    setSelectedColor(CARD_COLORS[0].value);
     setError(null);
   };
 
@@ -186,7 +166,7 @@ export function AddAchievementModal({
         try {
           const result = await uploadCertificate(certificateFile);
           finalCertificateUrl = result.certificateUrl;
-        } catch (uploadErr: any) {
+        } catch (uploadErr: unknown) {
           console.error('Failed to upload certificate:', uploadErr);
           setError('Failed to upload certificate image. Please try again.');
           setLoading(false);
@@ -205,7 +185,6 @@ export function AddAchievementModal({
         date,
         description: description.trim() || undefined,
         certificateUrl: finalCertificateUrl || undefined,
-        color: selectedColor,
       };
 
       if (achievementToEdit && onAchievementUpdated) {
@@ -216,9 +195,9 @@ export function AddAchievementModal({
         onAchievementAdded(achievement);
       }
       handleClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to save achievement:', err);
-      setError(err.response?.data?.error || err.message || 'Failed to save achievement');
+      setError(err instanceof Error ? err.message : 'Failed to save achievement');
     } finally {
       setLoading(false);
       setUploading(false);
@@ -252,7 +231,7 @@ export function AddAchievementModal({
                     {/* Header */}
                     <div className="p-6 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
                       <Dialog.Title className="text-xl font-bold tracking-tight text-neutral-900 dark:text-white uppercase flex items-center gap-2">
-                        <div style={{ color: selectedColor }}>
+                        <div className="text-neutral-500">
                           <Trophy className="w-5 h-5" />
                         </div>
                         {achievementToEdit ? 'Edit Achievement' : 'Add Achievement'}
@@ -333,25 +312,6 @@ export function AddAchievementModal({
                             onChange={(e) => setDate(e.target.value)}
                             className="w-full h-11 pl-10 pr-4 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-sm font-medium focus:outline-none focus:border-black dark:focus:border-white transition-colors"
                           />
-                        </div>
-                      </div>
-
-                      {/* Color Picker */}
-                      <div>
-                        <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-2 block">Card Color</label>
-                        <div className="flex flex-wrap gap-2">
-                          {CARD_COLORS.map((color) => (
-                            <button
-                              key={color.value}
-                              type="button"
-                              onClick={() => setSelectedColor(color.value)}
-                              className={`w-8 h-8 rounded-none border border-neutral-200 dark:border-neutral-800 flex items-center justify-center transition-transform hover:scale-105 ${selectedColor === color.value ? 'ring-2 ring-black dark:ring-white ring-offset-2 dark:ring-offset-black' : ''}`}
-                              style={{ backgroundColor: color.value }}
-                              title={color.name}
-                            >
-                              {selectedColor === color.value && <Check className="w-4 h-4 text-white drop-shadow-md" />}
-                            </button>
-                          ))}
                         </div>
                       </div>
 

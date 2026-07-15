@@ -16,6 +16,8 @@ export interface PublicPerson {
 }
 
 export interface PublicProfile extends Omit<PublicPerson, 'matchScore' | 'matchScoreBand' | 'matchReasons'> {
+  bannerImage: string | null;
+  connectionsCount: number;
   college: string | null;
   branch: string | null;
   degree: string | null;

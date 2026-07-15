@@ -1,0 +1,146 @@
+@property --glow-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes mcp-card-glow {
+  to { --glow-angle: 360deg; }
+}
+
+.card-canvas {
+  position: relative;
+  min-width: 0;
+  padding: 1px;
+  isolation: isolate;
+}
+
+.card-backdrop {
+  position: absolute;
+  inset: -18px;
+  z-index: -2;
+  opacity: 0;
+  filter: blur(24px);
+  background: conic-gradient(from var(--glow-angle), transparent 0 16%, rgb(59 130 246 / 0.28), transparent 35% 62%, rgb(139 92 246 / 0.22), transparent 82%);
+  transition: opacity 300ms ease;
+  animation: mcp-card-glow 7s linear infinite;
+  pointer-events: none;
+}
+
+.card-canvas:hover .card-backdrop,
+.card-canvas:focus-within .card-backdrop {
+  opacity: 1;
+}
+
+.glow-card {
+  position: relative;
+  min-width: 0;
+  height: 100%;
+  padding: 1px;
+  overflow: hidden;
+  background: rgb(203 213 225);
+  box-shadow: 0 16px 45px rgb(15 23 42 / 0.08);
+}
+
+.card-content {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+}
+
+.border-element {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  pointer-events: none;
+  opacity: 0.78;
+}
+
+.border-top,
+.border-bottom {
+  left: -35%;
+  width: 34%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #fff, #60a5fa, transparent);
+  animation: mcp-border-horizontal 5.5s linear infinite;
+}
+
+.border-top { top: 0; }
+.border-bottom { bottom: 0; animation-delay: -2.75s; }
+
+.border-left,
+.border-right {
+  top: -35%;
+  width: 1px;
+  height: 34%;
+  background: linear-gradient(180deg, transparent, #fff, #8b5cf6, transparent);
+  animation: mcp-border-vertical 5.5s linear infinite;
+}
+
+.border-left { left: 0; animation-delay: -1.4s; }
+.border-right { right: 0; animation-delay: -4.1s; }
+
+@keyframes mcp-border-horizontal {
+  to { transform: translateX(500%); }
+}
+
+@keyframes mcp-border-vertical {
+  to { transform: translateY(500%); }
+}
+
+@media (prefers-color-scheme: dark) {
+  .glow-card { background: rgb(51 65 85); box-shadow: none; }
+}
+
+@keyframes mcp-profile-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.mcp-profile-marquee {
+  overflow: hidden;
+  white-space: nowrap;
+  mask-image: linear-gradient(to right, transparent, black 7%, black 93%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 7%, black 93%, transparent);
+}
+
+.mcp-profile-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: mcp-profile-marquee 22s linear infinite;
+}
+
+.mcp-profile-marquee:hover .mcp-profile-marquee-track {
+  animation-play-state: paused;
+}
+
+.mcp-profile-marquee-group {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.mcp-profile-marquee-item {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.mcp-profile-marquee-item::after {
+  content: "·";
+  margin: 0 0.75rem;
+  opacity: 0.35;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-backdrop,
+  .border-element {
+    animation: none;
+  }
+
+  .mcp-profile-marquee-track {
+    animation: none;
+  }
+}

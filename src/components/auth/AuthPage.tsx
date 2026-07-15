@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import axios from 'axios';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth/useAuth';
 import { authAPI } from '@/lib/api/auth';
@@ -186,6 +187,11 @@ export function AuthPage() {
             ? 'Registration successful! Your invite has been applied. Please check your email to verify your account.'
             : 'Registration successful! Please check your email to verify your account.'
         );
+
+        if (!authResponse.user.isVerified) {
+          router.push(`/verify-email?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+          return;
+        }
         
         // Reset swipe button after successful signup
         setTimeout(() => {
@@ -217,6 +223,15 @@ export function AuthPage() {
           router.push('/');
         } catch (loginErr) {
           const errorMessage = handleApiError(loginErr);
+          if (
+            (axios.isAxiosError(loginErr) &&
+              loginErr.response?.status === 403 &&
+              loginErr.response?.data?.requiresVerification) ||
+            errorMessage.toLowerCase().includes('verify your email')
+          ) {
+            router.push(`/verify-email?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+            return;
+          }
           setError(errorMessage);
           setIsLoading(false);
           resetSwipeButtonById('swipe-btn-signin');

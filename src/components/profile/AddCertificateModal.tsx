@@ -6,31 +6,16 @@ import * as Dialog from '@radix-ui/react-dialog';
 import {
   X,
   Award,
-  Loader2,
-  Calendar,
   Building,
   Link as LinkIcon,
   Hash,
   Upload,
-  Trash2,
   Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { createCertificate, updateCertificate } from '@/lib/api/profile';
 import { uploadCertificate } from '@/lib/api/posts';
 import type { Certificate, CertificateInput } from '@/types/profile';
-
-const CARD_COLORS = [
-  { name: 'Neutral', value: '#525252' },
-  { name: 'Red', value: '#ef4444' },
-  { name: 'Orange', value: '#f97316' },
-  { name: 'Amber', value: '#f59e0b' },
-  { name: 'Green', value: '#10b981' },
-  { name: 'Blue', value: '#3b82f6' },
-  { name: 'Indigo', value: '#6366f1' },
-  { name: 'Purple', value: '#8b5cf6' },
-  { name: 'Pink', value: '#ec4899' },
-];
 
 interface AddCertificateModalProps {
   isOpen: boolean;
@@ -62,7 +47,6 @@ export function AddCertificateModal({
   const [certificateFile, setCertificateFile] = useState<File | null>(null);
   const [certificatePreview, setCertificatePreview] = useState<string | null>(null);
   const [uploadMethod, setUploadMethod] = useState<'url' | 'file'>('file');
-  const [selectedColor, setSelectedColor] = useState(CARD_COLORS[0].value);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -76,7 +60,6 @@ export function AddCertificateModal({
         setDoesNotExpire(certificateToEdit.doesNotExpire);
         setCredentialId(certificateToEdit.credentialId || '');
         setCredentialUrl(certificateToEdit.credentialUrl || '');
-        setSelectedColor(certificateToEdit.color || CARD_COLORS[0].value);
 
         // Preview setup
         if (certificateToEdit.credentialUrl) {
@@ -108,7 +91,6 @@ export function AddCertificateModal({
     setCertificateFile(null);
     setCertificatePreview(null);
     setUploadMethod('file');
-    setSelectedColor(CARD_COLORS[0].value);
     setError(null);
   };
 
@@ -181,7 +163,7 @@ export function AddCertificateModal({
         try {
           const result = await uploadCertificate(certificateFile);
           finalCredentialUrl = result.certificateUrl;
-        } catch (uploadErr: any) {
+        } catch (uploadErr: unknown) {
           console.error('Failed to upload certificate:', uploadErr);
           setError('Failed to upload certificate image. Please try again.');
           setLoading(false);
@@ -202,7 +184,6 @@ export function AddCertificateModal({
         doesNotExpire,
         credentialId: credentialId.trim() || undefined,
         credentialUrl: finalCredentialUrl || undefined,
-        color: selectedColor,
       };
 
       if (certificateToEdit && onCertificateUpdated) {
@@ -213,9 +194,9 @@ export function AddCertificateModal({
         onCertificateAdded(certificate);
       }
       handleClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to save certificate:', err);
-      setError(err.response?.data?.error || err.message || 'Failed to save certificate');
+      setError(err instanceof Error ? err.message : 'Failed to save certificate');
     } finally {
       setLoading(false);
       setUploading(false);
@@ -249,7 +230,7 @@ export function AddCertificateModal({
                     {/* Header */}
                     <div className="p-6 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
                       <Dialog.Title className="text-xl font-bold tracking-tight text-neutral-900 dark:text-white uppercase flex items-center gap-2">
-                        <div style={{ color: selectedColor }}>
+                        <div className="text-neutral-500">
                           <Award className="w-5 h-5" />
                         </div>
                         {certificateToEdit ? 'Edit Certification' : 'Add Certification'}
@@ -328,26 +309,6 @@ export function AddCertificateModal({
                         </div>
                         <span onClick={() => setDoesNotExpire(!doesNotExpire)} className="text-xs font-bold uppercase tracking-wide text-neutral-600 dark:text-neutral-400 cursor-pointer">This credential does not expire</span>
                       </div>
-
-                      {/* Color Picker */}
-                      <div>
-                        <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-2 block">Card Color</label>
-                        <div className="flex flex-wrap gap-2">
-                          {CARD_COLORS.map((color) => (
-                            <button
-                              key={color.value}
-                              type="button"
-                              onClick={() => setSelectedColor(color.value)}
-                              className={`w-8 h-8 rounded-none border border-neutral-200 dark:border-neutral-800 flex items-center justify-center transition-transform hover:scale-105 ${selectedColor === color.value ? 'ring-2 ring-black dark:ring-white ring-offset-2 dark:ring-offset-black' : ''}`}
-                              style={{ backgroundColor: color.value }}
-                              title={color.name}
-                            >
-                              {selectedColor === color.value && <Check className="w-4 h-4 text-white drop-shadow-md" />}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
 
                       {/* Credential ID & URL */}
                       <div className="space-y-4">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
@@ -9,22 +9,23 @@ import {
   Building2,
   MapPin,
   Calendar,
-  FileText,
-  Code2,
   Loader2,
   Plus,
   Check,
   ImageIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { createExperience } from '@/lib/api/profile';
+import { createExperience, updateExperience } from '@/lib/api/profile';
 import { ImageUploadModal } from './ImageUploadModal';
 import type { ExperienceInput, Experience } from '@/types/profile';
+import { formatLocation } from '@/lib/utils/profileLocation';
 
 interface AddExperienceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onExperienceAdded: (experience: Experience) => void;
+  experienceToEdit?: Experience | null;
+  onExperienceUpdated?: (experience: Experience) => void;
 }
 
 const experienceTypes = [
@@ -39,6 +40,8 @@ export function AddExperienceModal({
   isOpen,
   onClose,
   onExperienceAdded,
+  experienceToEdit,
+  onExperienceUpdated,
 }: AddExperienceModalProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +60,41 @@ export function AddExperienceModal({
     skills: [],
     logo: '',
   });
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (experienceToEdit) {
+      setFormData({
+        title: experienceToEdit.title,
+        company: experienceToEdit.company,
+        type: experienceToEdit.type,
+        location: formatLocation(experienceToEdit.location) || '',
+        startDate: experienceToEdit.startDate.split('T')[0],
+        endDate: experienceToEdit.endDate?.split('T')[0] || '',
+        isCurrent: experienceToEdit.isCurrent,
+        description: experienceToEdit.description || '',
+        skills: experienceToEdit.skills || [],
+        logo: experienceToEdit.logo || '',
+      });
+    } else {
+      setFormData({
+        title: '',
+        company: '',
+        type: 'Internship',
+        location: '',
+        startDate: '',
+        endDate: '',
+        isCurrent: false,
+        description: '',
+        skills: [],
+        logo: '',
+      });
+    }
+
+    setSkillInput('');
+    setError(null);
+  }, [isOpen, experienceToEdit]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -128,24 +166,19 @@ export function AddExperienceModal({
     setError(null);
 
     try {
-      const experience = await createExperience(formData);
-      onExperienceAdded(experience);
-      // Reset form
-      setFormData({
-        title: '',
-        company: '',
-        type: 'Internship',
-        location: '',
-        startDate: '',
-        endDate: '',
-        isCurrent: false,
-        description: '',
-        skills: [],
-        logo: '',
-      });
+      if (experienceToEdit && onExperienceUpdated) {
+        const experience = await updateExperience(experienceToEdit.id, formData);
+        onExperienceUpdated(experience);
+      } else {
+        const experience = await createExperience(formData);
+        onExperienceAdded(experience);
+      }
       onClose();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to add experience');
+    } catch (err: unknown) {
+      const responseError = typeof err === 'object' && err !== null && 'response' in err
+        ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+        : null;
+      setError(responseError || (experienceToEdit ? 'Failed to update experience' : 'Failed to add experience'));
     } finally {
       setSaving(false);
     }
@@ -153,7 +186,7 @@ export function AddExperienceModal({
 
   return (
     <>
-      <Dialog.Root open={isOpen} onOpenChange={onClose}>
+      <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
         <Dialog.Portal>
           <AnimatePresence>
             {isOpen && (
@@ -179,7 +212,7 @@ export function AddExperienceModal({
                       {/* Header */}
                       <div className="p-6 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
                         <Dialog.Title className="text-xl font-bold tracking-tight text-neutral-900 dark:text-white uppercase">
-                          Add Experience
+                          {experienceToEdit ? 'Edit Experience' : 'Add Experience'}
                         </Dialog.Title>
                         <Dialog.Close asChild>
                           <button className="text-neutral-400 hover:text-black dark:hover:text-white transition-colors">
@@ -400,10 +433,10 @@ export function AddExperienceModal({
                             {saving ? (
                               <>
                                 <Loader2 className="w-3 h-3 mr-2 animate-spin" />
-                                Adding...
+                                {experienceToEdit ? 'Saving...' : 'Adding...'}
                               </>
                             ) : (
-                              'Add Experience'
+                              experienceToEdit ? 'Save Changes' : 'Add Experience'
                             )}
                           </Button>
                         </div>

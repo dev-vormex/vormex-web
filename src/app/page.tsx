@@ -3,76 +3,104 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { DEFAULT_DESCRIPTION, SITE_URL } from '@/lib/seo';
+import { Caveat, Manrope } from 'next/font/google';
+import { SITE_URL } from '@/lib/seo';
+
+const manrope = Manrope({ subsets: ['latin'], variable: '--font-landing-sans' });
+const caveat = Caveat({ subsets: ['latin'], variable: '--font-landing-script' });
 
 export const metadata: Metadata = {
-  title: 'Vormex — Find People to Learn, Build, and Grow With',
-  description: DEFAULT_DESCRIPTION,
+  title: 'Vormex — Find Your People',
+  description: 'Join Vormex to meet people who share your skills, interests, and ambitions.',
   alternates: { canonical: '/' },
   openGraph: {
     url: SITE_URL,
-    title: 'Vormex — Find People to Learn, Build, and Grow With',
-    description: DEFAULT_DESCRIPTION,
+    title: 'Vormex — Find Your People',
+    description: 'Join Vormex to meet people who share your skills, interests, and ambitions.',
   },
 };
-
-const discoveryPaths = [
-  { href: '/skills/coding', title: 'Learn coding', copy: 'Find students and mentors working across programming, web, mobile, and AI.' },
-  { href: '/interests/startups', title: 'Build a startup', copy: 'Meet designers, developers, creators, and early-stage founders.' },
-  { href: '/hackathons', title: 'Join a hackathon', copy: 'Discover teams and people looking for complementary skills.' },
-];
 
 export default async function Home() {
   const cookieStore = await cookies();
   if (cookieStore.get('vx_auth_present')?.value === 'true') redirect('/feed');
 
   return (
-    <main className="min-h-screen bg-[#f4f7ff] text-slate-950 dark:bg-[#050816] dark:text-white">
-      <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-        <Link href="/" className="flex items-center gap-3 text-xl font-semibold">
-          <Image src="/logo.png" alt="Vormex" width={42} height={42} className="rounded-xl" priority />
-          Vormex
-        </Link>
-        <div className="flex items-center gap-3">
-          <Link href="/people" className="hidden rounded-full px-4 py-2 text-sm font-medium hover:bg-white/70 sm:block dark:hover:bg-white/10">Discover people</Link>
-          <Link href="/login" className="rounded-full bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700">Join Vormex</Link>
-        </div>
-      </nav>
+    <main className={`${manrope.variable} ${caveat.variable} min-h-screen bg-white font-[family-name:var(--font-landing-sans)] text-[#111318]`}>
+      <div className="grid min-h-screen lg:grid-cols-[1.08fr_0.92fr]">
+        <section className="relative hidden overflow-hidden bg-[#0a0d12] lg:flex lg:flex-col lg:justify-between lg:p-12 xl:p-16">
+          <div className="absolute -left-32 top-1/3 h-96 w-96 rounded-full bg-blue-600/20 blur-[110px]" />
+          <div className="absolute -right-24 bottom-0 h-96 w-96 rounded-full bg-violet-600/20 blur-[120px]" />
 
-      <section className="relative overflow-hidden px-6 pb-24 pt-16 sm:pt-24">
-        <div className="pointer-events-none absolute inset-x-0 top-0 mx-auto h-[32rem] max-w-5xl bg-[radial-gradient(circle_at_center,rgba(37,99,235,0.22),transparent_65%)]" />
-        <div className="relative mx-auto max-w-5xl text-center">
-          <p className="mx-auto mb-6 w-fit rounded-full border border-blue-200 bg-white/80 px-4 py-2 text-sm font-semibold text-blue-700 dark:border-blue-900 dark:bg-blue-950/60 dark:text-blue-300">A people network for learners and builders</p>
-          <h1 className="text-balance text-5xl font-bold tracking-tight sm:text-7xl">Find the right people for what you want to learn or build.</h1>
-          <p className="mx-auto mt-7 max-w-3xl text-lg leading-8 text-slate-600 dark:text-slate-300">{DEFAULT_DESCRIPTION}</p>
-          <div className="mt-10 flex flex-col justify-center gap-3 sm:flex-row">
-            <Link href="/people" className="rounded-full bg-blue-600 px-7 py-3.5 font-semibold text-white shadow-xl shadow-blue-600/25 hover:bg-blue-700">Find people for your goal</Link>
-            <Link href="/login" className="rounded-full border border-slate-300 bg-white/80 px-7 py-3.5 font-semibold hover:bg-white dark:border-slate-700 dark:bg-slate-900/80">Create your public profile</Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto grid max-w-6xl gap-5 px-6 pb-24 md:grid-cols-3" aria-label="Ways to discover people on Vormex">
-        {discoveryPaths.map((item) => (
-          <Link key={item.href} href={item.href} className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm transition hover:-translate-y-1 hover:shadow-xl dark:border-slate-800 dark:bg-slate-900">
-            <h2 className="text-xl font-bold">{item.title}</h2>
-            <p className="mt-3 leading-7 text-slate-600 dark:text-slate-300">{item.copy}</p>
-            <span className="mt-6 inline-block font-semibold text-blue-600">Explore →</span>
+          <Link href="/" className="relative z-10 flex w-fit items-center gap-3 text-white" aria-label="Vormex home">
+            <Image src="/logo.png" alt="" width={48} height={48} className="rounded-2xl" priority />
+            <span className="text-2xl font-semibold tracking-tight">Vormex</span>
           </Link>
-        ))}
-      </section>
 
-      <section className="border-y border-slate-200 bg-white px-6 py-20 dark:border-slate-800 dark:bg-slate-950">
-        <div className="mx-auto max-w-5xl text-center">
-          <h2 className="text-3xl font-bold sm:text-4xl">Profiles built around real intent</h2>
-          <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-slate-600 dark:text-slate-300">Skills, interests, projects, learning goals, and collaboration availability help Vormex recommend people for a reason—not just because they are popular.</p>
-        </div>
-      </section>
+          <div className="relative z-10 mx-auto w-full max-w-2xl py-16">
+            <p className="mb-7 text-sm font-semibold uppercase tracking-[0.24em] text-blue-400">Your people are here</p>
+            <h1 className="max-w-xl text-6xl font-semibold leading-[1.03] tracking-[-0.055em] text-white xl:text-7xl">
+              Learn, create, and grow together.
+            </h1>
 
-      <footer className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-10 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-        <p>© {new Date().getFullYear()} Vormex. Learn and build together.</p>
-        <div className="flex gap-5"><Link href="/people">People</Link><Link href="/vormex-delete-account">Account controls</Link><Link href="/login">Sign in</Link></div>
-      </footer>
+            <div className="relative mt-16 h-72" aria-hidden="true">
+              <div className="absolute left-8 top-10 h-48 w-72 -rotate-6 rounded-[2rem] border border-white/10 bg-white/[0.06] p-6 shadow-2xl backdrop-blur-xl">
+                <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-700" />
+                <div className="mt-7 h-3 w-32 rounded-full bg-white/80" />
+                <div className="mt-3 h-2.5 w-44 rounded-full bg-white/20" />
+              </div>
+              <div className="absolute left-48 top-3 h-52 w-80 rotate-3 rounded-[2rem] border border-white/15 bg-gradient-to-br from-[#202634] to-[#11151d] p-7 shadow-2xl xl:left-60">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/10 p-2.5">
+                    <Image src="/logo.png" alt="" width={42} height={42} className="h-full w-full object-contain" />
+                  </div>
+                  <div>
+                    <div className="h-3 w-36 rounded-full bg-white" />
+                    <div className="mt-3 h-2.5 w-24 rounded-full bg-white/30" />
+                  </div>
+                </div>
+                <div className="mt-8 flex gap-2">
+                  <span className="h-7 w-20 rounded-full bg-blue-500/30" />
+                  <span className="h-7 w-24 rounded-full bg-violet-500/25" />
+                  <span className="h-7 w-16 rounded-full bg-white/10" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p className="relative z-10 text-sm text-white/45">A community for learners, creators, and builders.</p>
+        </section>
+
+        <section className="flex min-h-screen flex-col px-6 py-7 sm:px-12 lg:px-16 xl:px-24">
+          <div className="flex items-center justify-between lg:justify-end">
+            <Link href="/" className="flex items-center gap-2.5 lg:hidden" aria-label="Vormex home">
+              <Image src="/logo.png" alt="" width={40} height={40} className="rounded-xl" priority />
+              <span className="text-xl font-semibold">Vormex</span>
+            </Link>
+          </div>
+
+          <div className="my-auto w-full max-w-lg self-center py-16 text-center">
+            <Image src="/logo.png" alt="Vormex" width={132} height={132} className="mx-auto mb-8 h-[132px] w-[132px] object-contain" priority />
+            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-blue-600">Welcome to Vormex</p>
+            <h2 className="mt-3 font-[family-name:var(--font-landing-script)] text-6xl font-semibold leading-none tracking-[-0.025em] sm:text-7xl">Find your people.</h2>
+            <p className="mx-auto mt-6 max-w-md text-lg leading-8 text-slate-600">
+              Meet people who share what you want to learn, build, and achieve.
+            </p>
+            <Link
+              href="/login?mode=signup"
+              className="mt-10 inline-flex w-full items-center justify-center rounded-2xl bg-blue-600 px-6 py-4 text-base font-semibold text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
+            >
+              Join Vormex
+            </Link>
+          </div>
+
+          <footer className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-500">
+            <span>© {new Date().getFullYear()} Vormex</span>
+            <Link href="/privacy" className="hover:text-slate-900">Privacy</Link>
+            <Link href="/terms" className="hover:text-slate-900">Terms</Link>
+            <Link href="/support" className="hover:text-slate-900">Support</Link>
+          </footer>
+        </section>
+      </div>
     </main>
   );
 }

@@ -187,6 +187,7 @@ export interface Education {
   grade: string | null;
   activities: string | null;
   description: string | null;
+  logo?: string | null;
 }
 
 export interface Project {
@@ -331,6 +332,7 @@ export interface EducationInput {
   grade?: string;
   activities?: string;
   description?: string;
+  logo?: string;
 }
 
 export interface ProjectInput {

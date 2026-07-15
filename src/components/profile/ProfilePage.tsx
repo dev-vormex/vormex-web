@@ -16,7 +16,7 @@ import {
 } from '@/lib/api/profile';
 import { ProfileHeader } from './ProfileHeader';
 import { ProfileAbout } from './ProfileAbout';
-import { Reveal } from './ProfileSection';
+import { ProfileSection, Reveal } from './ProfileSection';
 import { GitHubStats } from './GitHubStats';
 import { ActivityCalendar } from './ActivityCalendar';
 import { SkillsGrid } from './SkillsGrid';
@@ -84,6 +84,8 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
   // Edit State
   const [projectToEdit, setProjectToEdit] = useState<Project | null>(null);
   const [skillToEdit, setSkillToEdit] = useState<UserSkill | null>(null);
+  const [experienceToEdit, setExperienceToEdit] = useState<Experience | null>(null);
+  const [educationToEdit, setEducationToEdit] = useState<Education | null>(null);
   const [certificateToEdit, setCertificateToEdit] = useState<Certificate | null>(null);
   const [achievementToEdit, setAchievementToEdit] = useState<Achievement | null>(null);
 
@@ -254,10 +256,28 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
     }));
   };
 
+  const handleExperienceUpdated = (experience: Experience) => {
+    updateProfileState((currentProfile) => ({
+      ...currentProfile,
+      experiences: currentProfile.experiences.map((item) =>
+        item.id === experience.id ? experience : item
+      ),
+    }));
+  };
+
   const handleEducationAdded = (education: Education) => {
     updateProfileState((currentProfile) => ({
       ...currentProfile,
       education: [education, ...currentProfile.education],
+    }));
+  };
+
+  const handleEducationUpdated = (education: Education) => {
+    updateProfileState((currentProfile) => ({
+      ...currentProfile,
+      education: currentProfile.education.map((item) =>
+        item.id === education.id ? education : item
+      ),
     }));
   };
 
@@ -557,7 +577,7 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 pb-24 overflow-x-hidden">
+    <div className="min-h-screen overflow-x-hidden bg-neutral-50 pb-24 dark:bg-neutral-950">
       <ProfileHeader
         user={{
           ...profile.user,
@@ -570,8 +590,8 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
         onEditBanner={() => setBannerModalOpen(true)}
       />
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
-        <div className="grid gap-6 sm:gap-8">
+      <div className="mx-auto mt-4 w-full min-w-0 max-w-5xl px-3 sm:mt-8 sm:px-6 lg:px-8">
+        <div className="grid min-w-0 gap-4 [&>*]:min-w-0 sm:gap-6">
           {/* About Section (Bio & Interests) */}
           <ProfileAbout
             user={profile.user}
@@ -625,13 +645,27 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
           <ExperienceTimeline
             experiences={profile.experiences}
             isOwner={!!isOwner}
-            onAddExperience={() => setAddExperienceModalOpen(true)}
+            onAddExperience={() => {
+              setExperienceToEdit(null);
+              setAddExperienceModalOpen(true);
+            }}
+            onEditExperience={(experience) => {
+              setExperienceToEdit(experience);
+              setAddExperienceModalOpen(true);
+            }}
           />
 
           <EducationTimeline
             education={profile.education}
             isOwner={!!isOwner}
-            onAddEducation={() => setAddEducationModalOpen(true)}
+            onAddEducation={() => {
+              setEducationToEdit(null);
+              setAddEducationModalOpen(true);
+            }}
+            onEditEducation={(education) => {
+              setEducationToEdit(education);
+              setAddEducationModalOpen(true);
+            }}
           />
 
           <CertificatesGrid
@@ -654,20 +688,12 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
             onEditAchievement={handleEditAchievement}
           />
 
-          <Reveal>
-            <div className="mt-4">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-                  <Rss className="w-5 h-5" />
-                </div>
-                <h2 className="text-lg font-semibold tracking-tight text-neutral-900 dark:text-white">Activity Feed</h2>
-              </div>
+          <ProfileSection icon={<Rss className="h-5 w-5" />} title="Activity Feed">
               <ProfileFeed
                 userId={profile.user.id}
                 initialFeed={profile.recentActivity}
               />
-            </div>
-          </Reveal>
+          </ProfileSection>
         </div>
       </div>
 
@@ -716,16 +742,26 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
       {isOwner && (
         <AddExperienceModal
           isOpen={addExperienceModalOpen}
-          onClose={() => setAddExperienceModalOpen(false)}
+          onClose={() => {
+            setAddExperienceModalOpen(false);
+            setExperienceToEdit(null);
+          }}
           onExperienceAdded={handleExperienceAdded}
+          experienceToEdit={experienceToEdit}
+          onExperienceUpdated={handleExperienceUpdated}
         />
       )}
 
       {isOwner && (
         <AddEducationModal
           isOpen={addEducationModalOpen}
-          onClose={() => setAddEducationModalOpen(false)}
+          onClose={() => {
+            setAddEducationModalOpen(false);
+            setEducationToEdit(null);
+          }}
           onEducationAdded={handleEducationAdded}
+          educationToEdit={educationToEdit}
+          onEducationUpdated={handleEducationUpdated}
         />
       )}
 
