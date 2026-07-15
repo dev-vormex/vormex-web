@@ -11,7 +11,7 @@
     "start": "npx -y node@20.20.2 node_modules/next/dist/bin/next start",
     "lint": "eslint",
     "lint:focused": "eslint src/proxy.ts src/lib/routing/authProxy.ts src/lib/api/client.ts src/lib/api/request.ts src/lib/api/accountability.ts src/lib/api/circles.ts src/app/accountability/page.tsx src/hooks/useVariableRewards.ts tests/*.test.ts",
-    "test": "npx -y node@20.20.2 node_modules/tsx/dist/cli.mjs --test tests/*.test.ts",
+    "test": "npx -y node@20.20.2 scripts/run-tests.mjs",
     "verify": "npm run lint:focused && npm run test && npm run build"
   },
   "dependencies": {

@@ -1,76 +1,39 @@
-import { MetadataRoute } from 'next';
+import type { MetadataRoute } from 'next';
+import { PUBLIC_SEO_ENABLED, SITE_URL } from '@/lib/seo';
 
-const baseUrl =
-  process.env.NEXT_PUBLIC_BASE_URL ||
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://www.vormex.in');
+type SitemapProfile = { username: string; updatedAt: string };
 
-export default function sitemap(): MetadataRoute.Sitemap {
+function backendOrigin(): string {
+  const configured = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL;
+  return configured?.startsWith('http') ? configured.replace(/\/+$/, '') : 'https://vormex-backend.onrender.com';
+}
+
+async function publicProfiles(): Promise<SitemapProfile[]> {
+  try {
+    const response = await fetch(`${backendOrigin()}/api/public/discovery/sitemap/profiles?limit=5000`, { next: { revalidate: 300 } });
+    if (!response.ok) return [];
+    return ((await response.json()) as { profiles?: SitemapProfile[] }).profiles || [];
+  } catch {
+    return [];
+  }
+}
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  if (!PUBLIC_SEO_ENABLED) return [];
+  const profiles = await publicProfiles();
+  const staticEntries: MetadataRoute.Sitemap = [
+    { url: SITE_URL, changeFrequency: 'weekly', priority: 1 },
+    { url: `${SITE_URL}/people`, changeFrequency: 'daily', priority: 0.9 },
+    { url: `${SITE_URL}/skills/coding`, changeFrequency: 'daily', priority: 0.8 },
+    { url: `${SITE_URL}/interests/startups`, changeFrequency: 'daily', priority: 0.8 },
+  ];
   return [
-    {
-      url: baseUrl,
-      lastModified: new Date(),
-      changeFrequency: 'daily',
-      priority: 1,
-    },
-    {
-      url: `${baseUrl}/login`,
-      lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/vormex-delete-account`,
-      lastModified: new Date(),
-      changeFrequency: 'yearly',
+    ...staticEntries,
+    ...profiles.map((profile) => ({
+      url: `${SITE_URL}/people/${encodeURIComponent(profile.username)}`,
+      lastModified: new Date(profile.updatedAt),
+      changeFrequency: 'weekly' as const,
       priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/find-people`,
-      lastModified: new Date(),
-      changeFrequency: 'daily',
-      priority: 0.9,
-    },
-    {
-      url: `${baseUrl}/reels`,
-      lastModified: new Date(),
-      changeFrequency: 'daily',
-      priority: 0.9,
-    },
-    {
-      url: `${baseUrl}/messages`,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/groups`,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/jobs`,
-      lastModified: new Date(),
-      changeFrequency: 'daily',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/learning`,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/challenges`,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 0.7,
-    },
-    {
-      url: `${baseUrl}/store`,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 0.6,
-    },
+    })),
   ];
 }

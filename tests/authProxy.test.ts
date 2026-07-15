@@ -23,12 +23,12 @@ test('redirects authenticated users away from login', () => {
     onboardingCompleted: true,
   });
 
-  assert.equal(redirectPath, '/');
+  assert.equal(redirectPath, '/feed');
 });
 
 test('redirects authenticated users with incomplete onboarding to onboarding', () => {
   const redirectPath = getProxyRedirectPath({
-    pathname: '/',
+    pathname: '/feed',
     hasToken: true,
     onboardingCompleted: false,
   });

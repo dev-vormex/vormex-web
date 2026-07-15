@@ -23,7 +23,7 @@ export const AUTH_COOKIES_TO_CLEAR = [
   'admin_token',
 ] as const;
 
-const protectedRoutes = ['/', '/profile', '/settings', '/feed'] as const;
+const protectedRoutes = ['/profile', '/settings', '/feed'] as const;
 const authRoutes = ['/login', '/register'] as const;
 const publicRoutes = ['/forgot-password', '/verify-email', '/auth/google/callback'] as const;
 const onboardingAllowedRoutes = ['/onboarding', '/api', '/login', '/register'] as const;
@@ -58,7 +58,7 @@ export function getProxyRedirectPath({
 
   const isAuthRoute = authRoutes.some((route) => pathname.startsWith(route));
   if (isAuthRoute && hasToken && !isPublicRoute) {
-    return '/';
+    return '/feed';
   }
 
   const isOnboardingAllowed = onboardingAllowedRoutes.some((route) => pathname.startsWith(route));

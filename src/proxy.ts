@@ -15,6 +15,16 @@ function clearAuthCookies(response: NextResponse): void {
   }
 }
 
+const PRIVATE_INDEX_PREFIXES = [
+  '/feed', '/messages', '/notifications', '/settings', '/dashboard', '/profile/edit',
+  '/onboarding', '/upload', '/more/saved', '/reels/drafts', '/reels/analytics',
+  '/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/vormex-delete-account',
+];
+
+function isPrivateIndexPath(pathname: string): boolean {
+  return PRIVATE_INDEX_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
 export function proxy(request: NextRequest) {
   const cookieState = {
     authPresent: request.cookies.get(AUTH_PRESENT_COOKIE)?.value,
@@ -41,6 +51,12 @@ export function proxy(request: NextRequest) {
 
   if (shouldClearOrphanedAuth) {
     clearAuthCookies(response);
+  }
+
+  if (process.env.PUBLIC_SEO_ENABLED === 'false' || process.env.NEXT_PUBLIC_SEO_ENABLED === 'false') {
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+  } else if (isPrivateIndexPath(request.nextUrl.pathname)) {
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
   }
 
   return response;
