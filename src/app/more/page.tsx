@@ -43,7 +43,6 @@ import {
   Layout,
   Film,
   Crown,
-  Globe2,
 } from 'lucide-react';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { GitHubIntegration, MentionsDashboard } from '@/components/settings';
@@ -136,14 +135,6 @@ export default function MorePage() {
       href: '/profile',
       color: 'text-blue-500',
     },
-    ...(user?.username ? [{
-      id: 'public-profile',
-      label: 'View Public Profile',
-      icon: Globe2,
-      href: `/people/${encodeURIComponent(user.username)}`,
-      color: 'text-blue-600',
-      subtext: 'Preview your public Vormex profile',
-    }] : []),
     {
       id: 'vormex-ai',
       label: 'Vormex AI',
