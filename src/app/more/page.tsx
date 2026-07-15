@@ -286,6 +286,13 @@ export default function MorePage() {
       color: 'text-purple-500',
     },
     {
+      id: 'discovery-privacy',
+      label: 'Public Search & AI Discovery',
+      icon: Shield,
+      href: '/settings/discovery',
+      color: 'text-blue-500',
+    },
+    {
       id: 'privacy',
       label: 'Identity & Safety',
       icon: Shield,

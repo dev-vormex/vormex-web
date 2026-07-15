@@ -11,6 +11,7 @@ import { AgentProvider } from "@/components/agent/AgentContext";
 import { AgentSurface } from "@/components/agent/AgentSurface";
 import EngagementProvider from "@/components/engagement/EngagementProvider";
 import { Analytics } from "@vercel/analytics/next";
+import { DEFAULT_DESCRIPTION, PUBLIC_SEO_ENABLED, SITE_URL, safeJsonLd } from "@/lib/seo";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -23,7 +24,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const baseUrl = 'https://vormex.in';
+const baseUrl = SITE_URL;
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -40,6 +41,14 @@ const jsonLd = {
   },
 };
 
+const siteJsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    { '@type': 'Organization', '@id': `${baseUrl}/#organization`, name: 'Vormex', url: baseUrl, logo: `${baseUrl}/logo.png` },
+    { '@type': 'WebSite', '@id': `${baseUrl}/#website`, name: 'Vormex', url: baseUrl, publisher: { '@id': `${baseUrl}/#organization` }, description: DEFAULT_DESCRIPTION },
+  ],
+};
+
 export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),
   title: {
@@ -52,9 +61,6 @@ export const metadata: Metadata = {
     'students, social network, professional network, student community, connect students, India, networking, career, collaborate, Vormex',
   authors: [{ name: 'Vormex' }],
   creator: 'Vormex',
-  alternates: {
-    canonical: baseUrl,
-  },
   openGraph: {
     title: 'Vormex - Professional Social Networking for Students',
     description: 'More than a social network — Vormex helps students connect, collaborate, and grow professionally.',
@@ -71,8 +77,8 @@ export const metadata: Metadata = {
     images: ['/og-image.png'],
   },
   robots: {
-    index: true,
-    follow: true,
+    index: PUBLIC_SEO_ENABLED,
+    follow: PUBLIC_SEO_ENABLED,
   },
   icons: {
     icon: '/logo.png',
@@ -99,7 +105,11 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/logo.png" sizes="180x180" />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(siteJsonLd) }}
         />
       </head>
       <body
