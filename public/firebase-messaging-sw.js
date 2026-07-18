@@ -7,35 +7,42 @@
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 
-// Initialize the Firebase app in the service worker
-firebase.initializeApp({
-  apiKey: self.__FIREBASE_CONFIG__?.apiKey || '',
-  authDomain: self.__FIREBASE_CONFIG__?.authDomain || '',
-  projectId: self.__FIREBASE_CONFIG__?.projectId || '',
-  storageBucket: self.__FIREBASE_CONFIG__?.storageBucket || '',
-  messagingSenderId: self.__FIREBASE_CONFIG__?.messagingSenderId || '',
-  appId: self.__FIREBASE_CONFIG__?.appId || '',
-});
+// Service workers cannot read Next.js environment variables. Fetch the public
+// Firebase web config from the same origin at runtime instead of relying on an
+// undefined injected global.
+const messagingReady = fetch('/api/push/config', { cache: 'no-cache' })
+  .then((response) => {
+    if (!response.ok) throw new Error(`Push config request failed (${response.status})`);
+    return response.json();
+  })
+  .then((config) => {
+    firebase.initializeApp(config);
+    return firebase.messaging();
+  })
+  .catch((error) => {
+    console.error('[firebase-messaging-sw.js] Firebase initialization failed:', error);
+    return null;
+  });
 
-const messaging = firebase.messaging();
+messagingReady.then((messaging) => {
+  if (!messaging) return;
+  messaging.onBackgroundMessage((payload) => {
+    console.log('[firebase-messaging-sw.js] Received background message:', payload);
 
-// Handle background messages
-messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] Received background message:', payload);
+    const notificationTitle = payload.notification?.title || 'Vormex';
+    const notificationOptions = {
+      body: payload.notification?.body || '',
+      icon: '/icon-192x192.png',
+      badge: '/icon-72x72.png',
+      tag: payload.data?.type || 'general',
+      data: {
+        url: payload.data?.url || '/',
+        type: payload.data?.type,
+      },
+    };
 
-  const notificationTitle = payload.notification?.title || 'Vormex';
-  const notificationOptions = {
-    body: payload.notification?.body || '',
-    icon: '/icon-192x192.png',
-    badge: '/icon-72x72.png',
-    tag: payload.data?.type || 'general',
-    data: {
-      url: payload.data?.url || '/',
-      type: payload.data?.type,
-    },
-  };
-
-  self.registration.showNotification(notificationTitle, notificationOptions);
+    self.registration.showNotification(notificationTitle, notificationOptions);
+  });
 });
 
 // Handle notification click — navigate to the relevant page

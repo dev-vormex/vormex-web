@@ -9,6 +9,7 @@ import {
   type ChatUser,
   type Conversation,
   type ConversationsResponse,
+  type ChatSyncResponse,
   type Message,
 } from '@/lib/api/chat';
 import { searchUsersForMention, type MentionUser } from '@/lib/api/mentions';
@@ -33,6 +34,8 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import Link from 'next/link';
+import { CHAT_SYNC_EVENT } from './ChatOutboxCoordinator';
+import { Virtuoso } from 'react-virtuoso';
 
 const TYPING_INDICATOR_TIMEOUT_MS = 4000;
 const PEOPLE_SEARCH_DEBOUNCE_MS = 300;
@@ -172,6 +175,7 @@ export default function ChatList({
     () => cachedConversations?.conversations ?? []
   );
   const [loading, setLoading] = useState(() => !cachedConversations);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(() => cachedConversations?.hasMore ?? false);
   const [nextCursor, setNextCursor] = useState<string | undefined>(
@@ -251,6 +255,8 @@ export default function ChatList({
       // Only show loading if we don't have any conversations yet
       if (!cursor && !background && conversationCountRef.current === 0) {
         setLoading(true);
+      } else if (cursor) {
+        setLoadingMore(true);
       }
 
       const result = await getConversations(30, cursor);
@@ -280,6 +286,7 @@ export default function ChatList({
       setError(error.message || 'Failed to load conversations');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, [currentUserId, setConversationState]);
 
@@ -434,16 +441,56 @@ export default function ChatList({
       handleNewMessage(detail);
     };
 
+    const handleChatSync = (event: Event) => {
+      const response = (event as CustomEvent<ChatSyncResponse>).detail;
+      if (!response) return;
+      const authoritativeConversationIds = new Set(
+        response.conversations.map((conversation) => conversation.id)
+      );
+
+      if (response.conversations.length > 0 || response.statusChanges.length > 0) {
+        setConversationState((previousConversations) => {
+          const conversationMap = new Map(
+            previousConversations.map((conversation) => [conversation.id, conversation])
+          );
+          response.conversations.forEach((conversation) => {
+            conversationMap.set(conversation.id, conversation);
+          });
+          response.statusChanges.forEach((message) => {
+            const conversation = conversationMap.get(message.conversationId);
+            if (conversation?.lastMessage?.id === message.id) {
+              conversationMap.set(message.conversationId, {
+                ...conversation,
+                lastMessage: { ...conversation.lastMessage, status: message.status },
+              });
+            }
+          });
+          return Array.from(conversationMap.values()).sort((left, right) =>
+            Date.parse(right.lastMessageAt || right.updatedAt) -
+            Date.parse(left.lastMessageAt || left.updatedAt)
+          );
+        });
+      }
+
+      response.messages.forEach((message) => {
+        if (!authoritativeConversationIds.has(message.conversationId)) {
+          handleNewMessage({ conversationId: message.conversationId, message });
+        }
+      });
+    };
+
     socket.on('chat:new_message', handleNewMessage);
     socket.on('chat:notification', handleChatNotification);
     socket.on('chat:messages_read', handleMessagesRead);
     window.addEventListener('vormex:chat-message-confirmed', handleConfirmedMessage as EventListener);
+    window.addEventListener(CHAT_SYNC_EVENT, handleChatSync);
 
     return () => {
       socket.off('chat:new_message', handleNewMessage);
       socket.off('chat:notification', handleChatNotification);
       socket.off('chat:messages_read', handleMessagesRead);
       window.removeEventListener('vormex:chat-message-confirmed', handleConfirmedMessage as EventListener);
+      window.removeEventListener(CHAT_SYNC_EVENT, handleChatSync);
     };
   }, [currentUserId, fetchConversations, selectedConversationId, setConversationState]);
 
@@ -563,7 +610,7 @@ export default function ChatList({
   };
 
   const loadMore = () => {
-    if (hasMore && nextCursor) {
+    if (hasMore && nextCursor && !loadingMore) {
       void fetchConversations(nextCursor);
     }
   };
@@ -681,70 +728,73 @@ export default function ChatList({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-2 py-2 pb-24 md:pb-4">
-        {normalizedSearch && visibleConversations.length > 0 && (
-          <p className="px-3 pt-1 pb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-neutral-500">
-            Chats
-          </p>
-        )}
-
-        {noSearchResults ? (
-          <p className="p-6 text-center text-sm text-gray-500 dark:text-neutral-400">
-            No results for &ldquo;{searchQuery?.trim()}&rdquo;
-          </p>
-        ) : (
-          visibleConversations.map((conversation) => (
+      <Virtuoso
+        className="flex-1 min-h-0 overscroll-contain"
+        data={visibleConversations}
+        computeItemKey={(_, conversation) => conversation.id}
+        endReached={() => {
+          if (!normalizedSearch) loadMore();
+        }}
+        components={{
+          Header: () => normalizedSearch && visibleConversations.length > 0 ? (
+            <p className="px-5 pt-3 pb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-neutral-500">
+              Chats
+            </p>
+          ) : null,
+          Footer: () => (
+            <div className="px-2 pb-24 md:pb-4">
+              {noSearchResults && (
+                <p className="p-6 text-center text-sm text-gray-500 dark:text-neutral-400">
+                  No results for &ldquo;{searchQuery?.trim()}&rdquo;
+                </p>
+              )}
+              {showPeopleSection && (peopleResults.length > 0 || peopleSearchLoading) && (
+                <div className={visibleConversations.length > 0 ? 'mt-2' : undefined}>
+                  <p className="px-3 pt-1 pb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-neutral-500">
+                    People on Vormex
+                  </p>
+                  {peopleSearchLoading && peopleResults.length === 0 ? (
+                    <div className="px-3 py-2.5 space-y-2">
+                      {Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="flex items-center gap-3 animate-pulse">
+                          <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-neutral-800 shrink-0" />
+                          <div className="flex-1 min-w-0 space-y-1.5">
+                            <div className="h-3 w-1/3 bg-gray-200 dark:bg-neutral-800 rounded" />
+                            <div className="h-2.5 w-1/2 bg-gray-200 dark:bg-neutral-800 rounded" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : peopleResults.map((person) => (
+                    <PersonSearchItem
+                      key={person.id}
+                      person={person}
+                      isStarting={startingChatUserId === person.id}
+                      onClick={() => void handleStartConversation(person)}
+                    />
+                  ))}
+                </div>
+              )}
+              {loadingMore && (
+                <div className="flex justify-center py-3">
+                  <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-blue-600" />
+                </div>
+              )}
+            </div>
+          ),
+        }}
+        itemContent={(_, conversation) => (
+          <div className="px-2">
             <ConversationItem
-              key={conversation.id}
               conversation={conversation}
               isSelected={selectedConversationId === conversation.id}
               currentUserId={currentUserId}
               isTyping={typingConversationIds.has(conversation.id)}
               onClick={() => handleSelectConversation(conversation)}
             />
-          ))
-        )}
-
-        {showPeopleSection && (peopleResults.length > 0 || peopleSearchLoading) && (
-          <div className={visibleConversations.length > 0 ? 'mt-2' : undefined}>
-            <p className="px-3 pt-1 pb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-neutral-500">
-              People on Vormex
-            </p>
-            {peopleSearchLoading && peopleResults.length === 0 ? (
-              <div className="px-3 py-2.5 space-y-2">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3 animate-pulse">
-                    <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-neutral-800 shrink-0" />
-                    <div className="flex-1 min-w-0 space-y-1.5">
-                      <div className="h-3 w-1/3 bg-gray-200 dark:bg-neutral-800 rounded" />
-                      <div className="h-2.5 w-1/2 bg-gray-200 dark:bg-neutral-800 rounded" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              peopleResults.map((person) => (
-                <PersonSearchItem
-                  key={person.id}
-                  person={person}
-                  isStarting={startingChatUserId === person.id}
-                  onClick={() => void handleStartConversation(person)}
-                />
-              ))
-            )}
           </div>
         )}
-
-        {hasMore && !normalizedSearch && (
-          <button
-            onClick={loadMore}
-            disabled={loading}
-            className="w-full py-3 text-sm font-semibold text-blue-600 dark:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
-          >
-            {loading ? 'Loading...' : 'Load more'}
-          </button>
-        )}
-      </div>
+      />
     </div>
   );
 }

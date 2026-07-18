@@ -21,7 +21,7 @@ export function useUnreadMessagesCount(): number {
   const pathname = usePathname();
 
   const { data } = useQuery({
-    queryKey: queryKeys.chatUnreadCount(),
+    queryKey: queryKeys.chatUnreadCount(user?.id),
     queryFn: getUnreadCount,
     enabled: !!user,
     staleTime: UNREAD_COUNT_STALE_TIME,
@@ -36,7 +36,7 @@ export function useUnreadMessagesCount(): number {
     const countedMessageIds = new Set<string>();
 
     const invalidateUnreadCount = () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.chatUnreadCount() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.chatUnreadCount(user.id) });
     };
 
     const handleIncomingMessage = (data: { conversationId?: string; message?: { id?: string; senderId?: string } }) => {
@@ -55,7 +55,7 @@ export function useUnreadMessagesCount(): number {
           if (!viewingConversation) {
             // Bump instantly so the badge reacts without a network round-trip…
             queryClient.setQueryData<{ unreadCount: number } | undefined>(
-              queryKeys.chatUnreadCount(),
+              queryKeys.chatUnreadCount(user.id),
               (previous) => ({ unreadCount: (previous?.unreadCount ?? 0) + 1 })
             );
           }
@@ -80,7 +80,7 @@ export function useUnreadMessagesCount(): number {
   // navigates within messaging so the badge catches up.
   useEffect(() => {
     if (!user || !pathname?.startsWith('/messages')) return;
-    void queryClient.invalidateQueries({ queryKey: queryKeys.chatUnreadCount() });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.chatUnreadCount(user.id) });
   }, [user, pathname, queryClient]);
 
   return data?.unreadCount ?? 0;

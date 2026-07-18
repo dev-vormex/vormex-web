@@ -40,9 +40,10 @@ export const queryKeys = {
     ['profile-activity-heatmap', userId, year ?? 'recent'] as const,
   chatConversations: (userId?: string | null) =>
     ['chat-conversations', userId] as const,
-  chatConversation: (conversationId: string) =>
-    ['chat-conversation', conversationId] as const,
-  chatMessages: (conversationId: string) =>
-    ['chat-messages', conversationId] as const,
-  chatUnreadCount: () => ['chat-unread-count'] as const,
+  chatConversation: (userId: string | undefined | null, conversationId: string) =>
+    ['chat-conversation', userId, conversationId] as const,
+  chatMessages: (userId: string | undefined | null, conversationId: string) =>
+    ['chat-messages', userId, conversationId] as const,
+  chatUnreadCount: (userId: string | undefined | null) =>
+    ['chat-unread-count', userId] as const,
 };

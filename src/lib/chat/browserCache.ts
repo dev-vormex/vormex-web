@@ -12,6 +12,11 @@ const CACHE_PREFIX = `vormex:chat:${CACHE_VERSION}`;
 const BROWSER_CACHE_TTL = 12 * 60 * 60 * 1000;
 const MAX_CACHED_CONVERSATIONS = 50;
 const MAX_CACHED_MESSAGES = 100;
+const MESSAGE_CACHE_WRITE_DEBOUNCE_MS = 500;
+
+const pendingMessageWrites = new Map<string, MessagesResponse>();
+const pendingMessageWriteTimers = new Map<string, ReturnType<typeof setTimeout>>();
+let pageHideFlushRegistered = false;
 
 type CacheEnvelope<T> = {
   savedAt: number;
@@ -87,6 +92,27 @@ function writeSnapshot<T>(key: string, value: T): void {
   } catch {
     // Storage can be full or blocked. Memory cache still keeps the UI warm.
   }
+}
+
+function flushMessageCacheWrite(key: string): void {
+  const pendingResponse = pendingMessageWrites.get(key);
+  if (!pendingResponse) return;
+
+  const timer = pendingMessageWriteTimers.get(key);
+  if (timer) clearTimeout(timer);
+  pendingMessageWriteTimers.delete(key);
+  pendingMessageWrites.delete(key);
+  writeSnapshot(key, pendingResponse);
+}
+
+export function flushPendingMessageCacheWrites(): void {
+  [...pendingMessageWrites.keys()].forEach(flushMessageCacheWrite);
+}
+
+function registerPageHideFlush(): void {
+  if (pageHideFlushRegistered || typeof window === 'undefined') return;
+  pageHideFlushRegistered = true;
+  window.addEventListener('pagehide', flushPendingMessageCacheWrites);
 }
 
 function isConversation(value: unknown): value is Conversation {
@@ -181,8 +207,17 @@ export function writeCachedMessages(
 ): void {
   if (!userId) return;
 
-  writeSnapshot(messagesKey(userId, conversationId), {
+  const key = messagesKey(userId, conversationId);
+  pendingMessageWrites.set(key, {
     ...response,
     messages: response.messages.slice(-MAX_CACHED_MESSAGES),
   });
+
+  const existingTimer = pendingMessageWriteTimers.get(key);
+  if (existingTimer) clearTimeout(existingTimer);
+  pendingMessageWriteTimers.set(
+    key,
+    setTimeout(() => flushMessageCacheWrite(key), MESSAGE_CACHE_WRITE_DEBOUNCE_MS)
+  );
+  registerPageHideFlush();
 }

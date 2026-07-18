@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Message,
   MessagesResponse,
+  type ChatSyncResponse,
   getMessages,
   markAsRead as markConversationAsRead,
 } from '@/lib/api/chat';
@@ -30,20 +31,31 @@ import {
   writeCachedMessages,
 } from '@/lib/chat/browserCache';
 import { mergeMessages, normalizeMessage } from '@/lib/chat/messageCache';
+import { CHAT_SYNC_EVENT } from './ChatOutboxCoordinator';
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 
-const HISTORY_LOAD_THRESHOLD = 96;
-const AUTO_SCROLL_THRESHOLD = 120;
+const INITIAL_FIRST_ITEM_INDEX = 100_000;
 
 type AutoScrollMode = 'instant' | 'smooth' | null;
 
-function isNearBottom(container: HTMLDivElement | null): boolean {
-  if (!container) {
-    return true;
-  }
+type VirtualMessageItem =
+  | { kind: 'date'; dateKey: string }
+  | { kind: 'message'; message: Message; showAvatar: boolean }
+  | { kind: 'optimistic'; message: OptimisticMessage }
+  | { kind: 'uploading'; message: UploadingMessage }
+  | { kind: 'typing' };
 
-  return (
-    container.scrollHeight - (container.scrollTop + container.clientHeight) <= AUTO_SCROLL_THRESHOLD
-  );
+function confirmedVirtualRowCount(messages: Message[]): number {
+  let dateRows = 0;
+  let previousDate = '';
+  messages.forEach((message) => {
+    const dateKey = format(new Date(message.createdAt), 'yyyy-MM-dd');
+    if (dateKey !== previousDate) {
+      previousDate = dateKey;
+      dateRows += 1;
+    }
+  });
+  return messages.length + dateRows;
 }
 
 interface ChatMessagesProps {
@@ -64,6 +76,7 @@ interface ChatMessagesProps {
   optimisticMessages?: OptimisticMessage[];
   confirmedMessages?: Message[];
   onLastMessageUpdate?: (message: string) => void;
+  onRetryMessage?: (clientMessageId: string) => void;
 }
 
 export default function ChatMessages({
@@ -78,11 +91,12 @@ export default function ChatMessages({
   optimisticMessages = [],
   confirmedMessages = [],
   onLastMessageUpdate,
+  onRetryMessage,
 }: ChatMessagesProps) {
   const queryClient = useQueryClient();
   const messagesQueryKey = useMemo(
-    () => queryKeys.chatMessages(conversationId),
-    [conversationId]
+    () => queryKeys.chatMessages(currentUserId, conversationId),
+    [conversationId, currentUserId]
   );
   const cachedMessagesResponse = queryClient.getQueryData<MessagesResponse>(
     messagesQueryKey
@@ -101,21 +115,33 @@ export default function ChatMessages({
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [viewingVideo, setViewingVideo] = useState<string | null>(null);
 
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const virtualItemIndexByMessageIdRef = useRef<Map<string, number>>(new Map());
   const [autoScrollMode, setAutoScrollMode] = useState<AutoScrollMode>('instant');
+  const [firstItemIndex, setFirstItemIndex] = useState(INITIAL_FIRST_ITEM_INDEX);
+  const firstItemIndexRef = useRef(INITIAL_FIRST_ITEM_INDEX);
   const autoScrollEnabledRef = useRef(true);
   const activeFetchKeyRef = useRef<string | null>(null);
-  const scrollRestoreRef = useRef<{ previousHeight: number; previousTop: number } | null>(null);
   const optimisticCountRef = useRef(optimisticMessages.length);
   const uploadingCountRef = useRef(uploadingMessages.length);
   const hasHydratedMessageCacheRef = useRef(Boolean(cachedMessagesResponse));
   const messageCountRef = useRef(messages.length);
+  const hasMoreRef = useRef(hasMore);
+  const nextCursorRef = useRef(nextCursor);
   const processedIncomingMessageIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     messageCountRef.current = messages.length;
   }, [messages.length]);
+
+  useEffect(() => {
+    hasMoreRef.current = hasMore;
+  }, [hasMore]);
+
+  useEffect(() => {
+    nextCursorRef.current = nextCursor;
+  }, [nextCursor]);
 
   useEffect(() => {
     if (loading) {
@@ -137,12 +163,18 @@ export default function ChatMessages({
     const messageElement = messageRefs.current.get(messageId);
     if (messageElement) {
       messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      setHighlightedMessageId(messageId);
-      // Remove highlight after 1.5 seconds
-      setTimeout(() => {
-        setHighlightedMessageId(null);
-      }, 1500);
+    } else {
+      const itemIndex = virtualItemIndexByMessageIdRef.current.get(messageId);
+      if (itemIndex !== undefined) {
+        virtuosoRef.current?.scrollToIndex({
+          index: firstItemIndexRef.current + itemIndex,
+          align: 'center',
+          behavior: 'smooth',
+        });
+      }
     }
+    setHighlightedMessageId(messageId);
+    setTimeout(() => setHighlightedMessageId(null), 1500);
   }, []);
 
   // Register message ref
@@ -157,7 +189,7 @@ export default function ChatMessages({
   const syncReadState = useCallback(async () => {
     try {
       await markConversationAsRead(conversationId);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.chatUnreadCount() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.chatUnreadCount(currentUserId) });
     } catch (error) {
       const status = typeof error === 'object' && error !== null && 'response' in error
         ? (error as { response?: { status?: number } }).response?.status
@@ -169,7 +201,7 @@ export default function ChatMessages({
       );
       markChatAsRead(conversationId);
     }
-  }, [conversationId, queryClient]);
+  }, [conversationId, currentUserId, queryClient]);
 
   const fetchMessages = useCallback(async (cursor?: string) => {
     const fetchKey = cursor ?? '__initial__';
@@ -182,13 +214,6 @@ export default function ChatMessages({
 
       if (cursor) {
         setLoadingMore(true);
-        const container = messagesContainerRef.current;
-        if (container) {
-          scrollRestoreRef.current = {
-            previousHeight: container.scrollHeight,
-            previousTop: container.scrollTop,
-          };
-        }
       } else if (!hasHydratedMessageCacheRef.current || messageCountRef.current === 0) {
         setLoading(true);
       }
@@ -198,7 +223,18 @@ export default function ChatMessages({
       const normalizedMessages = result.messages.map(normalizeMessage);
 
       if (cursor) {
-        setMessages((previousMessages) => mergeMessages(previousMessages, normalizedMessages));
+        setMessages((previousMessages) => {
+          const mergedMessages = mergeMessages(previousMessages, normalizedMessages);
+          const prependedRows = Math.max(
+            0,
+            confirmedVirtualRowCount(mergedMessages) - confirmedVirtualRowCount(previousMessages)
+          );
+          if (prependedRows > 0) {
+            firstItemIndexRef.current -= prependedRows;
+            setFirstItemIndex(firstItemIndexRef.current);
+          }
+          return mergedMessages;
+        });
       } else {
         setMessages((previousMessages) => mergeMessages(previousMessages, normalizedMessages));
         hasHydratedMessageCacheRef.current = true;
@@ -219,10 +255,16 @@ export default function ChatMessages({
         }
       }
 
-      setHasMore(result.hasMore);
-      setNextCursor(result.nextCursor);
+      // An initial refresh contains only the newest page. If the browser cache
+      // already holds older pages, retain its oldest cursor so upward paging
+      // continues behind those cached rows instead of skipping history.
+      const preserveCachedHistoryCursor =
+        !cursor &&
+        messageCountRef.current > normalizedMessages.length &&
+        Boolean(nextCursorRef.current);
+      setHasMore(preserveCachedHistoryCursor ? hasMoreRef.current : result.hasMore);
+      setNextCursor(preserveCachedHistoryCursor ? nextCursorRef.current : result.nextCursor);
     } catch (err: unknown) {
-      scrollRestoreRef.current = null;
       console.error('Failed to fetch messages:', err);
     } finally {
       activeFetchKeyRef.current = null;
@@ -470,6 +512,24 @@ export default function ChatMessages({
   }, [confirmedMessages]);
 
   useEffect(() => {
+    const handleChatSync = (event: Event) => {
+      const response = (event as CustomEvent<ChatSyncResponse>).detail;
+      const changedMessages = [...(response?.messages ?? []), ...(response?.statusChanges ?? [])]
+        .filter((message) => message.conversationId === conversationId);
+      if (changedMessages.length === 0) return;
+
+      if (changedMessages.some((message) => message.senderId === currentUserId)) {
+        autoScrollEnabledRef.current = true;
+        setAutoScrollMode('smooth');
+      }
+      setMessages((previousMessages) => mergeMessages(previousMessages, changedMessages));
+    };
+
+    window.addEventListener(CHAT_SYNC_EVENT, handleChatSync);
+    return () => window.removeEventListener(CHAT_SYNC_EVENT, handleChatSync);
+  }, [conversationId, currentUserId]);
+
+  useEffect(() => {
     const optimisticCountIncreased = optimisticMessages.length > optimisticCountRef.current;
     const uploadingCountIncreased = uploadingMessages.length > uploadingCountRef.current;
 
@@ -482,69 +542,54 @@ export default function ChatMessages({
     }
   }, [optimisticMessages.length, uploadingMessages.length]);
 
-  useLayoutEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) {
-      return;
-    }
-
-    if (scrollRestoreRef.current) {
-      const { previousHeight, previousTop } = scrollRestoreRef.current;
-      container.scrollTop = previousTop + (container.scrollHeight - previousHeight);
-      scrollRestoreRef.current = null;
-      return;
-    }
-
-    if (!autoScrollMode) {
-      return;
-    }
-
-    const scrollTop = container.scrollHeight;
-    if (autoScrollMode === 'instant') {
-      container.scrollTop = scrollTop;
-    } else {
-      container.scrollTo({ top: scrollTop, behavior: 'smooth' });
-    }
-
+  useEffect(() => {
+    if (!autoScrollMode) return;
+    virtuosoRef.current?.scrollToIndex({
+      index: 'LAST',
+      align: 'end',
+      behavior: autoScrollMode === 'smooth' ? 'smooth' : 'auto',
+    });
     setAutoScrollMode(null);
-  }, [messages, optimisticMessages.length, uploadingMessages.length, typingUser, autoScrollMode]);
+  }, [autoScrollMode, messages.length, optimisticMessages.length, uploadingMessages.length, typingUser]);
 
-  // Scroll detection for loading more
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const target = e.currentTarget;
-    autoScrollEnabledRef.current = isNearBottom(target);
-
-    if (
-      target.scrollTop < HISTORY_LOAD_THRESHOLD &&
-      hasMore &&
-      !loadingMore &&
-      nextCursor &&
-      !activeFetchKeyRef.current
-    ) {
-      void fetchMessages(nextCursor);
-    }
-  };
-
-  // Group messages by date
-  const groupedMessages = messages.reduce((groups, message) => {
-    const date = new Date(message.createdAt);
-    const dateKey = format(date, 'yyyy-MM-dd');
-    
-    if (!groups[dateKey]) {
-      groups[dateKey] = [];
-    }
-    groups[dateKey].push(message);
-    
-    return groups;
-  }, {} as Record<string, Message[]>);
   const confirmedClientMessageIds = new Set(
     messages
       .map((message) => message.clientMessageId)
       .filter((clientMessageId): clientMessageId is string => Boolean(clientMessageId))
   );
+  const uploadingMessageIds = new Set(uploadingMessages.map((message) => message.id));
   const visibleOptimisticMessages = optimisticMessages.filter(
-    (optimisticMessage) => !confirmedClientMessageIds.has(optimisticMessage.id)
+    (optimisticMessage) =>
+      !confirmedClientMessageIds.has(optimisticMessage.id) &&
+      !uploadingMessageIds.has(optimisticMessage.id)
   );
+  const virtualItems = useMemo<VirtualMessageItem[]>(() => {
+    const items: VirtualMessageItem[] = [];
+    const itemIndexes = new Map<string, number>();
+    let previousDate = '';
+    let previousMessage: Message | null = null;
+
+    messages.forEach((message) => {
+      const dateKey = format(new Date(message.createdAt), 'yyyy-MM-dd');
+      if (dateKey !== previousDate) {
+        items.push({ kind: 'date', dateKey });
+        previousDate = dateKey;
+        previousMessage = null;
+      }
+      itemIndexes.set(message.id, items.length);
+      items.push({
+        kind: 'message',
+        message,
+        showAvatar: !previousMessage || previousMessage.senderId !== message.senderId,
+      });
+      previousMessage = message;
+    });
+    visibleOptimisticMessages.forEach((message) => items.push({ kind: 'optimistic', message }));
+    uploadingMessages.forEach((message) => items.push({ kind: 'uploading', message }));
+    if (typingUser) items.push({ kind: 'typing' });
+    virtualItemIndexByMessageIdRef.current = itemIndexes;
+    return items;
+  }, [messages, typingUser, uploadingMessages, visibleOptimisticMessages]);
 
   if (loading) {
     return (
@@ -558,201 +603,173 @@ export default function ChatMessages({
   const wallpaperOption = WALLPAPER_OPTIONS.find(w => w.id === wallpaper) || WALLPAPER_OPTIONS[0];
   const wallpaperClasses = cn(wallpaperOption.color, wallpaperOption.pattern);
 
-  return (
-    <>
-    <div 
-      ref={messagesContainerRef}
-      className={cn("flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4", wallpaperClasses)}
-      onScroll={handleScroll}
-      style={{ overflowAnchor: 'none' }}
-    >
-      {loadingMore && (
-        <div className="flex justify-center py-2">
-          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-        </div>
-      )}
-
-      {Object.entries(groupedMessages).map(([dateKey, dateMessages]) => (
-        <div key={dateKey}>
-          {/* Date separator */}
-          <div className="flex items-center justify-center my-4">
-            <div className="bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-full text-xs text-gray-600 dark:text-gray-300">
-              {formatDateSeparator(new Date(dateKey))}
-            </div>
+  const renderVirtualItem = (_index: number, item: VirtualMessageItem) => {
+    if (item.kind === 'date') {
+      return (
+        <div className="flex items-center justify-center my-4">
+          <div className="bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-full text-xs text-gray-600 dark:text-gray-300">
+            {formatDateSeparator(new Date(item.dateKey))}
           </div>
-
-          {/* Messages for this date */}
-          {dateMessages.map((message, index) => {
-            const prevMessage = index > 0 ? dateMessages[index - 1] : null;
-            const showAvatar = !prevMessage || prevMessage.senderId !== message.senderId;
-            
-            return (
-              <MessageBubble
-                key={message.id}
-                message={message}
-                isOwn={message.senderId === currentUserId}
-                showAvatar={showAvatar}
-                otherUser={otherUser}
-                conversationId={conversationId}
-                isHighlighted={highlightedMessageId === message.id}
-                onScrollToReply={scrollToMessage}
-                registerRef={(el) => registerMessageRef(message.id, el)}
-                onReply={onReply ? () => onReply({
-                  id: message.id,
-                  content: message.content,
-                  senderName: message.senderId === currentUserId ? 'You' : otherUser.name,
-                }) : undefined}
-                onViewImage={setViewingImage}
-                onViewVideo={setViewingVideo}
-                availableReactions={availableReactions}
-                animatedBubbles={animatedBubbles}
-              />
-            );
-          })}
         </div>
-      ))}
+      );
+    }
 
-      {/* Optimistic Messages (sent but not yet confirmed) */}
-      {visibleOptimisticMessages.map(optMsg => (
-        <div key={optMsg.id} className="flex justify-end mb-2">
+    if (item.kind === 'message') {
+      const message = item.message;
+      return (
+        <MessageBubble
+          message={message}
+          isOwn={message.senderId === currentUserId}
+          showAvatar={item.showAvatar}
+          otherUser={otherUser}
+          conversationId={conversationId}
+          isHighlighted={highlightedMessageId === message.id}
+          onScrollToReply={scrollToMessage}
+          registerRef={(element) => registerMessageRef(message.id, element)}
+          onReply={onReply ? () => onReply({
+            id: message.id,
+            content: message.content,
+            senderName: message.senderId === currentUserId ? 'You' : otherUser.name,
+          }) : undefined}
+          onViewImage={setViewingImage}
+          onViewVideo={setViewingVideo}
+          availableReactions={availableReactions}
+          animatedBubbles={animatedBubbles}
+        />
+      );
+    }
+
+    if (item.kind === 'optimistic') {
+      const optimisticMessage = item.message;
+      return (
+        <div className="flex justify-end mb-2">
           <div className="max-w-[70%]">
-            {/* Reply preview if present */}
-            {optMsg.replyTo && (
+            {optimisticMessage.replyTo && (
               <div className="text-xs p-2 rounded-t-lg border-l-2 bg-blue-600/20 border-blue-400">
                 <span className="text-gray-500 text-[10px]">↩ Replying to</span>
-                <p className="truncate text-gray-700 dark:text-gray-300">{optMsg.replyTo.content}</p>
+                <p className="truncate text-gray-700 dark:text-gray-300">{optimisticMessage.replyTo.content}</p>
               </div>
             )}
             <div className={cn(
-              "bg-blue-600 text-white px-4 py-2 rounded-2xl rounded-br-sm",
-              optMsg.replyTo && "rounded-t-none"
+              'bg-blue-600 text-white px-4 py-2 rounded-2xl rounded-br-sm',
+              optimisticMessage.status === 'FAILED' && 'bg-red-600',
+              optimisticMessage.replyTo && 'rounded-t-none'
             )}>
-              <p className="break-words whitespace-pre-wrap">{optMsg.content}</p>
+              {optimisticMessage.mediaUrl && optimisticMessage.contentType === 'image' && (
+                <img src={optimisticMessage.mediaUrl} alt={optimisticMessage.fileName || 'Failed upload'} className="mb-2 max-h-52 rounded-lg object-cover" />
+              )}
+              {optimisticMessage.mediaUrl && optimisticMessage.contentType === 'video' && (
+                <video src={optimisticMessage.mediaUrl} className="mb-2 max-h-52 rounded-lg" muted />
+              )}
+              <p className="break-words whitespace-pre-wrap">{optimisticMessage.content}</p>
             </div>
-            <div className="text-xs text-gray-500 mt-1 flex items-center gap-1 justify-end">
-              <span>{format(new Date(optMsg.createdAt), 'HH:mm')}</span>
-              <span className="animate-pulse">⏳</span>
+            <div className={cn(
+              'text-xs text-gray-500 mt-1 flex items-center gap-1 justify-end',
+              optimisticMessage.status === 'FAILED' && 'text-red-600 dark:text-red-400'
+            )}>
+              <span>{format(new Date(optimisticMessage.createdAt), 'HH:mm')}</span>
+              {optimisticMessage.status === 'FAILED' ? (
+                <button
+                  type="button"
+                  onClick={() => onRetryMessage?.(optimisticMessage.id)}
+                  className="font-semibold underline underline-offset-2"
+                  aria-label="Retry failed message"
+                >
+                  Failed · Retry
+                </button>
+              ) : <span className="animate-pulse">⏳</span>}
             </div>
           </div>
         </div>
-      ))}
+      );
+    }
 
-      {/* Uploading Messages */}
-      {uploadingMessages.map(uploadingMsg => (
-        <div key={uploadingMsg.id} className="flex justify-end mb-2">
+    if (item.kind === 'uploading') {
+      const uploadingMessage = item.message;
+      return (
+        <div className="flex justify-end mb-2">
           <div className="relative max-w-[70%]">
             <div className="bg-blue-600 text-white px-4 py-2 rounded-2xl rounded-br-sm">
-              {/* Preview for images/videos */}
-              {uploadingMsg.preview && (uploadingMsg.type === 'image' || uploadingMsg.type === 'video') && (
+              {uploadingMessage.preview && (uploadingMessage.type === 'image' || uploadingMessage.type === 'video') && (
                 <div className="relative mb-2 rounded-lg overflow-hidden">
-                  {uploadingMsg.type === 'image' ? (
-                    <img 
-                      src={uploadingMsg.preview} 
-                      alt="Uploading" 
-                      className="max-w-full opacity-70"
-                      style={{ maxHeight: '200px' }}
-                    />
+                  {uploadingMessage.type === 'image' ? (
+                    <img src={uploadingMessage.preview} alt="Uploading" className="max-w-full opacity-70 max-h-[200px]" />
                   ) : (
-                    <video 
-                      src={uploadingMsg.preview}
-                      className="max-w-full opacity-70"
-                      style={{ maxHeight: '200px' }}
-                      muted
-                    />
+                    <video src={uploadingMessage.preview} className="max-w-full opacity-70 max-h-[200px]" muted />
                   )}
-                  {/* Overlay with spinner */}
                   <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                    <div className="relative">
-                      <svg className="w-12 h-12" viewBox="0 0 36 36">
-                        <circle
-                          cx="18"
-                          cy="18"
-                          r="16"
-                          fill="none"
-                          stroke="rgba(255,255,255,0.3)"
-                          strokeWidth="3"
-                        />
-                        <circle
-                          cx="18"
-                          cy="18"
-                          r="16"
-                          fill="none"
-                          stroke="white"
-                          strokeWidth="3"
-                          strokeDasharray={`${uploadingMsg.progress}, 100`}
-                          strokeLinecap="round"
-                          transform="rotate(-90 18 18)"
-                        />
-                      </svg>
-                      <span className="absolute inset-0 flex items-center justify-center text-white text-xs font-medium">
-                        {uploadingMsg.progress}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {/* For audio/documents - show icon with progress */}
-              {(uploadingMsg.type === 'audio' || uploadingMsg.type === 'document') && (
-                <div className="flex items-center gap-3">
-                  <div className="relative w-10 h-10">
-                    <svg className="w-10 h-10" viewBox="0 0 36 36">
-                      <circle
-                        cx="18"
-                        cy="18"
-                        r="16"
-                        fill="none"
-                        stroke="rgba(255,255,255,0.3)"
-                        strokeWidth="3"
-                      />
-                      <circle
-                        cx="18"
-                        cy="18"
-                        r="16"
-                        fill="none"
-                        stroke="white"
-                        strokeWidth="3"
-                        strokeDasharray={`${uploadingMsg.progress}, 100`}
-                        strokeLinecap="round"
-                        transform="rotate(-90 18 18)"
-                      />
-                    </svg>
-                    <span className="absolute inset-0 flex items-center justify-center text-white text-xs">
-                      {uploadingMsg.type === 'audio' ? '🎤' : '📄'}
+                    <span className="rounded-full bg-black/40 px-2 py-1 text-xs font-medium">
+                      {uploadingMessage.progress}%
                     </span>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm truncate">{uploadingMsg.fileName || 'Uploading...'}</p>
-                    <p className="text-xs opacity-70">Sending... {uploadingMsg.progress}%</p>
+                </div>
+              )}
+              {(uploadingMessage.type === 'audio' || uploadingMessage.type === 'document') && (
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">{uploadingMessage.type === 'audio' ? '🎤' : '📄'}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm">{uploadingMessage.fileName || 'Uploading...'}</p>
+                    <p className="text-xs opacity-70">Sending... {uploadingMessage.progress}%</p>
                   </div>
                 </div>
               )}
-              
-              {/* Text label */}
-              {(uploadingMsg.type === 'image' || uploadingMsg.type === 'video') && (
+              {(uploadingMessage.type === 'image' || uploadingMessage.type === 'video') && (
                 <p className="text-sm">
-                  {uploadingMsg.type === 'image' ? '📷 Sending photo...' : '🎥 Sending video...'}
+                  {uploadingMessage.type === 'image' ? '📷 Sending photo...' : '🎥 Sending video...'}
                 </p>
               )}
             </div>
           </div>
         </div>
-      ))}
+      );
+    }
 
-      {/* Typing indicator */}
-      {typingUser && (
-        <div className="flex items-center gap-2 text-gray-500 text-sm">
-          <div className="flex gap-1">
-            <span className="animate-bounce">•</span>
-            <span className="animate-bounce" style={{ animationDelay: '0.1s' }}>•</span>
-            <span className="animate-bounce" style={{ animationDelay: '0.2s' }}>•</span>
-          </div>
-          <span>{otherUser.name} is typing...</span>
+    return (
+      <div className="flex items-center gap-2 text-gray-500 text-sm py-2">
+        <div className="flex gap-1">
+          <span className="animate-bounce">•</span>
+          <span className="animate-bounce" style={{ animationDelay: '0.1s' }}>•</span>
+          <span className="animate-bounce" style={{ animationDelay: '0.2s' }}>•</span>
         </div>
-      )}
+        <span>{otherUser.name} is typing...</span>
+      </div>
+    );
+  };
 
-    </div>
-
+  return (
+    <>
+    <Virtuoso
+      ref={virtuosoRef}
+      className={cn('flex-1 min-h-0 overscroll-contain px-4', wallpaperClasses)}
+      style={{ overflowAnchor: 'none' }}
+      data={virtualItems}
+      firstItemIndex={firstItemIndex}
+      increaseViewportBy={{ top: 96, bottom: 200 }}
+      computeItemKey={(index, item) => {
+        if (item.kind === 'message') return item.message.id;
+        if (item.kind === 'optimistic' || item.kind === 'uploading') return item.message.id;
+        if (item.kind === 'date') return `date-${item.dateKey}-${index}`;
+        return `typing-${conversationId}`;
+      }}
+      startReached={() => {
+        if (hasMore && !loadingMore && nextCursor && !activeFetchKeyRef.current) {
+          void fetchMessages(nextCursor);
+        }
+      }}
+      atBottomStateChange={(atBottom) => {
+        autoScrollEnabledRef.current = atBottom;
+        if (atBottom) void syncReadState();
+      }}
+      followOutput={() => autoScrollEnabledRef.current ? 'smooth' : false}
+      components={{
+        Header: () => loadingMore ? (
+          <div className="flex justify-center py-2">
+            <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-blue-600" />
+          </div>
+        ) : null,
+      }}
+      itemContent={renderVirtualItem}
+    />
     {/* Image Viewer Modal */}
     {viewingImage && (
       <div 

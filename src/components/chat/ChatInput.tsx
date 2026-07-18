@@ -3,10 +3,14 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   initializeSocket,
-  sendChatMessage as sendRealtimeChatMessage,
   sendChatTyping,
 } from '@/lib/socket';
-import { uploadChatMedia, getMessageLimitStatus, sendMessage, type Message, type MessageLimitStatus } from '@/lib/api/chat';
+import { getMessageLimitStatus, sendMessage, type Message, type MessageLimitStatus } from '@/lib/api/chat';
+import {
+  attemptChatOutboxEntry,
+  putChatOutboxEntry,
+  type ChatOutboxEntry,
+} from '@/lib/chat/outbox';
 import { getConnectionStatus, sendConnectionRequest, type ConnectionStatus } from '@/lib/api/connections';
 import { cn } from '@/lib/utils';
 import { handleApiError } from '@/lib/utils/errorHandler';
@@ -70,7 +74,7 @@ export interface OptimisticMessage {
     content: string;
     senderName: string;
   };
-  status: 'SENDING';
+  status: 'SENDING' | 'FAILED';
   createdAt: string;
 }
 
@@ -106,17 +110,6 @@ interface FilePreview {
 }
 
 const AI_LEARNING_MESSAGE = 'ai model is learning please give it some time';
-
-function shouldFallbackToRestSend(error: unknown): boolean {
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-
-  return (
-    message.includes('realtime connection unavailable') ||
-    message.includes('not authenticated') ||
-    message.includes('socket authentication failed') ||
-    message.includes('acknowledgement timed out')
-  );
-}
 
 export default function ChatInput({
   conversationId,
@@ -571,42 +564,21 @@ export default function ChatInput({
 
   const submitMessage = useCallback(async (
     data: Parameters<typeof sendMessage>[1],
-    options?: { optimisticId?: string }
+    options?: { optimisticId?: string; onUploadProgress?: (progress: number) => void }
   ) => {
-    const payload = {
-      ...data,
-      clientMessageId: data.clientMessageId || options?.optimisticId,
-    };
+    const clientMessageId = data.clientMessageId || options?.optimisticId;
+    if (!clientMessageId) throw new Error('clientMessageId is required for durable sending');
 
-    let sentMessage: Message;
-    try {
-      sentMessage = await sendRealtimeChatMessage({
-        conversationId,
-        ...payload,
-      });
-    } catch (error) {
-      if (!shouldFallbackToRestSend(error)) {
-        throw error;
-      }
-
-      sentMessage = await sendMessage(conversationId, payload);
-    }
-
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('vormex:chat-message-confirmed', {
-        detail: {
-          conversationId,
-          message: sentMessage,
-        },
-      }));
-    }
+    const sentMessage = await attemptChatOutboxEntry(clientMessageId, {
+      onUploadProgress: options?.onUploadProgress,
+    });
 
     onConfirmedMessage?.(sentMessage);
     if (options?.optimisticId) {
       onOptimisticMessageResolved?.(options.optimisticId);
     }
     return sentMessage;
-  }, [conversationId, onConfirmedMessage, onOptimisticMessageResolved]);
+  }, [onConfirmedMessage, onOptimisticMessageResolved]);
 
   const handleSend = useCallback(async () => {
     const trimmedMessage = message.trim();
@@ -614,6 +586,7 @@ export default function ChatInput({
     const hasAudio = audioBlob !== null;
     
     if (!trimmedMessage && !hasFiles && !hasAudio) return;
+    if (!currentUserId) return;
 
     // Check message limit before sending (for non-connected users)
     if (messageLimitInfo && !messageLimitInfo.isConnected && !messageLimitInfo.canSend) {
@@ -655,80 +628,115 @@ export default function ChatInput({
 
     // Upload and send audio message if exists
     if (hasAudio && audioToUpload) {
-      const uploadId = `upload-audio-${Date.now()}`;
-      
-      // Add optimistic uploading message
-      setUploadingMessages(prev => [...prev, {
-        id: uploadId,
-        type: 'audio',
-        fileName: 'Voice message',
-        progress: 0,
-      }]);
+      const uploadId = crypto.randomUUID();
+      const createdAt = new Date().toISOString();
+      const audioFile = new globalThis.File([audioToUpload], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
+      const content = '🎤 Voice message';
 
       try {
-        const audioFile = new globalThis.File([audioToUpload], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
-        
-        const result = await uploadChatMedia(audioFile, 'audio', (progress) => {
-          setUploadingMessages(prev => 
+        await putChatOutboxEntry({
+          clientMessageId: uploadId,
+          ownerId: currentUserId!,
+          conversationId,
+          content,
+          contentType: 'audio',
+          fileName: audioFile.name,
+          fileSize: audioFile.size,
+          replyToId: currentReplyTo?.id,
+          createdAt,
+          attempts: 0,
+          status: 'pending',
+          localFile: audioFile,
+          localFileType: 'audio',
+        });
+        setUploadingMessages(prev => [...prev, {
+          id: uploadId,
+          type: 'audio',
+          fileName: 'Voice message',
+          progress: 0,
+        }]);
+
+        await submitMessage({
+          content,
+          contentType: 'audio',
+          fileName: audioFile.name,
+          fileSize: audioFile.size,
+          replyToId: currentReplyTo?.id,
+          clientMessageId: uploadId,
+        }, { optimisticId: uploadId, onUploadProgress: (progress) => {
+          setUploadingMessages(prev =>
             prev.map(m => m.id === uploadId ? { ...m, progress } : m)
           );
-        });
-        
-        // Remove uploading message
+        } });
         setUploadingMessages(prev => prev.filter(m => m.id !== uploadId));
-        
-        await submitMessage({
-          content: '🎤 Voice message',
-          contentType: 'audio',
-          mediaUrl: result.mediaUrl,
-          fileName: result.fileName,
-          fileSize: result.fileSize,
-          replyToId: currentReplyTo?.id,
-        });
         playVoiceSfx();
       } catch (error) {
         console.error('Failed to upload audio:', error);
         setUploadingMessages(prev => prev.filter(m => m.id !== uploadId));
-        alert('Failed to send voice message');
+        onOptimisticMessage?.({
+          id: uploadId,
+          conversationId,
+          senderId: currentUserId!,
+          content,
+          contentType: 'audio',
+          fileName: audioFile.name,
+          fileSize: audioFile.size,
+          replyToId: currentReplyTo?.id,
+          status: 'FAILED',
+          createdAt,
+        });
       }
     }
 
     // Upload files in parallel with optimistic UI
     if (hasFiles) {
       const uploadPromises = filesToUpload.map(async (filePreview, index) => {
-        const uploadId = `upload-${Date.now()}-${index}`;
-        
-        // Add optimistic uploading message immediately
-        setUploadingMessages(prev => [...prev, {
-          id: uploadId,
-          type: filePreview.type,
-          preview: filePreview.preview,
-          fileName: filePreview.file.name,
-          progress: 0,
-        }]);
+        const uploadId = crypto.randomUUID();
+        const createdAt = new Date().toISOString();
+        const content = filePreview.type === 'image' ? '📷 Photo' :
+          filePreview.type === 'video' ? '🎥 Video' :
+          filePreview.type === 'document' ? `📄 ${filePreview.file.name}` :
+          `📎 ${filePreview.file.name}`;
 
         try {
-          const result = await uploadChatMedia(filePreview.file, filePreview.type, (progress) => {
-            setUploadingMessages(prev => 
+          const entry: ChatOutboxEntry = {
+            clientMessageId: uploadId,
+            ownerId: currentUserId!,
+            conversationId,
+            content,
+            contentType: filePreview.type,
+            fileName: filePreview.file.name,
+            fileSize: filePreview.file.size,
+            replyToId: index === 0 ? currentReplyTo?.id : undefined,
+            createdAt,
+            attempts: 0,
+            status: 'pending',
+            localFile: filePreview.file,
+            localFileType: filePreview.type,
+          };
+          await putChatOutboxEntry(entry);
+          setUploadingMessages(prev => [...prev, {
+            id: uploadId,
+            type: filePreview.type,
+            preview: filePreview.preview,
+            fileName: filePreview.file.name,
+            progress: 0,
+          }]);
+
+          await submitMessage({
+            content,
+            contentType: filePreview.type,
+            fileName: filePreview.file.name,
+            fileSize: filePreview.file.size,
+            replyToId: index === 0 ? currentReplyTo?.id : undefined,
+            clientMessageId: uploadId,
+          }, { optimisticId: uploadId, onUploadProgress: (progress) => {
+            setUploadingMessages(prev =>
               prev.map(m => m.id === uploadId ? { ...m, progress } : m)
             );
-          });
-          
-          // Remove uploading message
+          } });
           setUploadingMessages(prev => prev.filter(m => m.id !== uploadId));
-          
-          await submitMessage({
-            content: filePreview.type === 'image' ? '📷 Photo' : 
-                     filePreview.type === 'video' ? '🎥 Video' :
-                     filePreview.type === 'document' ? `📄 ${filePreview.file.name}` :
-                     `📎 ${filePreview.file.name}`,
-            contentType: filePreview.type,
-            mediaUrl: result.mediaUrl,
-            fileName: result.fileName,
-            fileSize: result.fileSize,
-            replyToId: index === 0 ? currentReplyTo?.id : undefined,
-          });
-          
+
           // Clean up preview URL
           if (filePreview.preview) {
             URL.revokeObjectURL(filePreview.preview);
@@ -736,7 +744,19 @@ export default function ChatInput({
         } catch (error) {
           console.error('Failed to upload file:', error);
           setUploadingMessages(prev => prev.filter(m => m.id !== uploadId));
-          alert(`Failed to send ${filePreview.file.name}`);
+          onOptimisticMessage?.({
+            id: uploadId,
+            conversationId,
+            senderId: currentUserId!,
+            content,
+            contentType: filePreview.type,
+            mediaUrl: filePreview.preview,
+            fileName: filePreview.file.name,
+            fileSize: filePreview.file.size,
+            replyToId: index === 0 ? currentReplyTo?.id : undefined,
+            status: 'FAILED',
+            createdAt,
+          });
         }
       });
 
@@ -747,27 +767,37 @@ export default function ChatInput({
     // Send text message immediately
     if (textToSend) {
       // Create optimistic message for immediate UI feedback
-      const optimisticId = `optimistic-${Date.now()}`;
-      if (onOptimisticMessage && currentUserId) {
-        const optimisticMsg: OptimisticMessage = {
-          id: optimisticId,
+      const optimisticId = crypto.randomUUID();
+      const createdAt = new Date().toISOString();
+      const optimisticMsg: OptimisticMessage = {
+        id: optimisticId,
+        conversationId,
+        senderId: currentUserId!,
+        content: textToSend,
+        contentType: 'text',
+        replyToId: currentReplyTo?.id,
+        replyTo: currentReplyTo ? {
+          id: currentReplyTo.id,
+          content: currentReplyTo.content,
+          senderName: currentReplyTo.senderName,
+        } : undefined,
+        status: 'SENDING',
+        createdAt,
+      };
+
+      try {
+        await putChatOutboxEntry({
+          clientMessageId: optimisticId,
+          ownerId: currentUserId!,
           conversationId,
-          senderId: currentUserId,
           content: textToSend,
           contentType: 'text',
           replyToId: currentReplyTo?.id,
-          replyTo: currentReplyTo ? {
-            id: currentReplyTo.id,
-            content: currentReplyTo.content,
-            senderName: currentReplyTo.senderName,
-          } : undefined,
-          status: 'SENDING',
-          createdAt: new Date().toISOString(),
-        };
-        onOptimisticMessage(optimisticMsg);
-      }
-
-      try {
+          createdAt,
+          attempts: 0,
+          status: 'pending',
+        });
+        onOptimisticMessage?.(optimisticMsg);
         await submitMessage({
           content: textToSend,
           contentType: 'text',
@@ -780,8 +810,7 @@ export default function ChatInput({
         }
       } catch (error) {
         console.error('Failed to send text message:', error);
-        onOptimisticMessageResolved?.(optimisticId);
-        alert(handleApiError(error));
+        onOptimisticMessage?.({ ...optimisticMsg, status: 'FAILED' });
       }
     }
   }, [
@@ -792,7 +821,6 @@ export default function ChatInput({
     messageLimitInfo,
     onCancelReply,
     onOptimisticMessage,
-    onOptimisticMessageResolved,
     playVoiceSfx,
     replyTo,
     selectedFiles,

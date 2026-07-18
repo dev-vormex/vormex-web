@@ -100,7 +100,7 @@ export function AppWarmup() {
             });
 
             const messagesResponse = await queryClient.fetchQuery({
-              queryKey: queryKeys.chatMessages(conversation.id),
+              queryKey: queryKeys.chatMessages(user.id, conversation.id),
               queryFn: () => getMessages(conversation.id, 50),
               staleTime: CHAT_STALE_TIME,
             });

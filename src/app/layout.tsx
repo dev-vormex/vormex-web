@@ -10,6 +10,7 @@ import { VormexDock } from "@/components/ui/dock";
 import { AgentProvider } from "@/components/agent/AgentContext";
 import { AgentSurface } from "@/components/agent/AgentSurface";
 import EngagementProvider from "@/components/engagement/EngagementProvider";
+import ChatOutboxCoordinator from "@/components/chat/ChatOutboxCoordinator";
 import { Analytics } from "@vercel/analytics/next";
 import { DEFAULT_DESCRIPTION, PUBLIC_SEO_ENABLED, SITE_URL, safeJsonLd } from "@/lib/seo";
 import "./globals.css";
@@ -125,6 +126,7 @@ export default function RootLayout({
             <GoogleAuthProvider>
               <AuthProvider>
                 <AppWarmup />
+                <ChatOutboxCoordinator />
                 <NotificationToastProvider>
                   <AgentProvider>
                     <EngagementProvider>

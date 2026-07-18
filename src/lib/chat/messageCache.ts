@@ -20,44 +20,51 @@ export function mergeMessages(existingMessages: Message[], incomingMessages: Mes
     return existingMessages;
   }
 
-  const messageMap = new Map(existingMessages.map((message) => [message.id, message]));
-  const clientMessageIdMap = new Map(
-    existingMessages
-      .map((message) => [message.clientMessageId, message.id] as const)
-      .filter(([clientMessageId]) => Boolean(clientMessageId))
-  );
+  const result = [...existingMessages];
+
+  const compareMessages = (left: Message, right: Message): number => {
+    const byCreatedAt = Date.parse(left.createdAt) - Date.parse(right.createdAt);
+    return byCreatedAt !== 0 ? byCreatedAt : left.id.localeCompare(right.id);
+  };
+
+  const insertionIndex = (message: Message): number => {
+    let low = 0;
+    let high = result.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (compareMessages(result[middle], message) <= 0) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    return low;
+  };
 
   incomingMessages.forEach((incomingMessage) => {
     const normalizedMessage = normalizeMessage(incomingMessage);
-    const existingIdForClientMessage = normalizedMessage.clientMessageId
-      ? clientMessageIdMap.get(normalizedMessage.clientMessageId)
-      : undefined;
-    const existingMessage = messageMap.get(existingIdForClientMessage || normalizedMessage.id);
-    if (existingIdForClientMessage && existingIdForClientMessage !== normalizedMessage.id) {
-      messageMap.delete(existingIdForClientMessage);
-    }
-
-    messageMap.set(
-      normalizedMessage.id,
-      existingMessage
-        ? {
-            ...existingMessage,
-            ...normalizedMessage,
-            sender: normalizedMessage.sender ?? existingMessage.sender,
-            reactions: normalizedMessage.reactions ?? existingMessage.reactions,
-            replyTo: normalizedMessage.replyTo ?? existingMessage.replyTo,
-          }
-        : normalizedMessage
+    const existingIndex = result.findIndex(
+      (message) =>
+        message.id === normalizedMessage.id ||
+        Boolean(
+          normalizedMessage.clientMessageId &&
+            message.clientMessageId === normalizedMessage.clientMessageId
+        )
     );
-    if (normalizedMessage.clientMessageId) {
-      clientMessageIdMap.set(normalizedMessage.clientMessageId, normalizedMessage.id);
-    }
+    const existingMessage = existingIndex >= 0 ? result.splice(existingIndex, 1)[0] : undefined;
+    const mergedMessage = existingMessage
+      ? {
+          ...existingMessage,
+          ...normalizedMessage,
+          sender: normalizedMessage.sender ?? existingMessage.sender,
+          reactions: normalizedMessage.reactions ?? existingMessage.reactions,
+          replyTo: normalizedMessage.replyTo ?? existingMessage.replyTo,
+        }
+      : normalizedMessage;
+    result.splice(insertionIndex(mergedMessage), 0, mergedMessage);
   });
 
-  return Array.from(messageMap.values()).sort(
-    (firstMessage, secondMessage) =>
-      new Date(firstMessage.createdAt).getTime() - new Date(secondMessage.createdAt).getTime()
-  );
+  return result;
 }
 
 /**
@@ -75,17 +82,13 @@ export function appendMessageToConversationCache(
   conversationId: string,
   message: Message
 ): void {
-  const messagesQueryKey = queryKeys.chatMessages(conversationId);
+  const messagesQueryKey = queryKeys.chatMessages(userId, conversationId);
   const cachedResponse =
     queryClient.getQueryData<MessagesResponse>(messagesQueryKey) ??
     readCachedMessages(userId, conversationId)?.value;
 
   // No cached thread yet — the first open fetches from the server anyway.
   if (!cachedResponse) return;
-
-  if (cachedResponse.messages.some((existingMessage) => existingMessage.id === message.id)) {
-    return;
-  }
 
   const nextResponse: MessagesResponse = {
     ...cachedResponse,

@@ -92,6 +92,14 @@ export interface MessagesResponse {
   nextCursor?: string;
 }
 
+export interface ChatSyncResponse {
+  messages: Message[];
+  statusChanges: Message[];
+  conversations: Conversation[];
+  cursor: string;
+  hasMore: boolean;
+}
+
 // ============================================
 // Chat API Functions
 // ============================================
@@ -108,6 +116,13 @@ export async function getConversations(
   if (cursor) params.append('cursor', cursor);
   
   return apiClient.get(`/chat/conversations?${params.toString()}`);
+}
+
+export async function syncChat(since?: string): Promise<ChatSyncResponse> {
+  const params = new URLSearchParams();
+  if (since) params.set('since', since);
+  const query = params.toString();
+  return apiClient.get(`/chat/sync${query ? `?${query}` : ''}`);
 }
 
 /**

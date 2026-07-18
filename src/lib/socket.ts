@@ -13,7 +13,7 @@ const joinedChatRooms = new Set<string>();
 let feedRoomJoined = false;
 const CHAT_CONNECT_GRACE_MS = 10000;
 const CHAT_AUTH_GRACE_MS = 5000;
-const CHAT_SEND_ACK_TIMEOUT_MS = 8000;
+const CHAT_SEND_ACK_TIMEOUT_MS = 3000;
 const SOCKET_TICKET_REFRESH_SKEW_MS = 10_000;
 const DELIVERED_ACK_CACHE_LIMIT = 200;
 const acknowledgedDeliveredMessageIds = new Set<string>();
@@ -622,9 +622,15 @@ export function leaveChatRoom(conversationId: string): void {
  * Send a chat message via WebSocket
  */
 export async function sendChatMessage(data: ChatSendPayload): Promise<Message> {
+  const existingSocket = socket;
   const sock = getOrCreateSocket();
-  const connected = await waitForSocketConnect(sock);
-  const ready = connected && (await waitForSocketReady(sock));
+
+  // Once the application has created its long-lived socket, do not put each
+  // message behind another connection grace period. The durable outbox can
+  // fail over to REST immediately while the socket reconnects in parallel.
+  const ready = existingSocket
+    ? sock.connected && socketAuthenticated
+    : (await waitForSocketConnect(sock)) && (await waitForSocketReady(sock));
 
   if (!ready) {
     throw new Error('Realtime connection unavailable');

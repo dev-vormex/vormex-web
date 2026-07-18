@@ -20,6 +20,14 @@ import {
   isWallpaperUnlocked,
 } from '@/lib/chat/customization';
 import { CHAT_STALE_TIME, queryKeys } from '@/lib/queryKeys';
+import {
+  CHAT_MESSAGE_CONFIRMED_EVENT,
+  CHAT_OUTBOX_UPDATED_EVENT,
+  drainChatOutbox,
+  listChatOutboxEntries,
+  retryChatOutboxEntry,
+  type ChatOutboxEntry,
+} from '@/lib/chat/outbox';
 
 interface ConversationPageProps {
   params: Promise<{ conversationId: string }>;
@@ -58,8 +66,8 @@ export default function ConversationPage({ params }: ConversationPageProps) {
   const [lastReceivedMessagesByConversation, setLastReceivedMessagesByConversation] = useState<Record<string, string>>({});
   const [chatCustomization, setChatCustomization] = useState(DEFAULT_CHAT_CUSTOMIZATION_ENTITLEMENTS);
   const conversationQueryKey = useMemo(
-    () => queryKeys.chatConversation(conversationId),
-    [conversationId]
+    () => queryKeys.chatConversation(user?.id, conversationId),
+    [conversationId, user?.id]
   );
   const conversationsQueryKey = useMemo(
     () => queryKeys.chatConversations(user?.id),
@@ -157,7 +165,13 @@ export default function ConversationPage({ params }: ConversationPageProps) {
   const handleOptimisticMessage = useCallback((message: OptimisticMessage) => {
     setOptimisticMessagesByConversation((previousMessages) => ({
       ...previousMessages,
-      [conversationId]: [...(previousMessages[conversationId] ?? []), message],
+      [conversationId]: (previousMessages[conversationId] ?? []).some(
+        (existingMessage) => existingMessage.id === message.id
+      )
+        ? (previousMessages[conversationId] ?? []).map((existingMessage) =>
+            existingMessage.id === message.id ? { ...existingMessage, ...message } : existingMessage
+          )
+        : [...(previousMessages[conversationId] ?? []), message],
     }));
   }, [conversationId]);
 
@@ -181,6 +195,63 @@ export default function ConversationPage({ params }: ConversationPageProps) {
       };
     });
   }, [conversationId]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const applyOutboxEntry = (entry: ChatOutboxEntry) => {
+      if (entry.ownerId !== user.id || entry.conversationId !== conversationId) return;
+      handleOptimisticMessage({
+        id: entry.clientMessageId,
+        conversationId: entry.conversationId,
+        senderId: user.id,
+        content: entry.content,
+        contentType: entry.contentType,
+        mediaUrl: entry.mediaUrl,
+        fileName: entry.fileName,
+        fileSize: entry.fileSize,
+        replyToId: entry.replyToId,
+        status: entry.status === 'failed' ? 'FAILED' : 'SENDING',
+        createdAt: entry.createdAt,
+      });
+    };
+
+    const handleOutboxUpdated = (event: Event) => {
+      applyOutboxEntry((event as CustomEvent<ChatOutboxEntry>).detail);
+    };
+    const handleMessageConfirmed = (event: Event) => {
+      const detail = (event as CustomEvent<{ conversationId: string; message: Message }>).detail;
+      if (detail?.conversationId !== conversationId || !detail.message) return;
+      handleConfirmedMessage(detail.message);
+      if (detail.message.clientMessageId) {
+        handleOptimisticMessageResolved(detail.message.clientMessageId);
+      }
+    };
+
+    void listChatOutboxEntries(user.id)
+      .then((entries) => entries.forEach(applyOutboxEntry))
+      .then(() => drainChatOutbox(user.id))
+      .catch((error) => console.error('Could not restore chat outbox:', error));
+
+    window.addEventListener(CHAT_OUTBOX_UPDATED_EVENT, handleOutboxUpdated);
+    window.addEventListener(CHAT_MESSAGE_CONFIRMED_EVENT, handleMessageConfirmed);
+    return () => {
+      window.removeEventListener(CHAT_OUTBOX_UPDATED_EVENT, handleOutboxUpdated);
+      window.removeEventListener(CHAT_MESSAGE_CONFIRMED_EVENT, handleMessageConfirmed);
+    };
+  }, [
+    conversationId,
+    handleConfirmedMessage,
+    handleOptimisticMessage,
+    handleOptimisticMessageResolved,
+    user?.id,
+  ]);
+
+  const handleRetryMessage = useCallback((clientMessageId: string) => {
+    void retryChatOutboxEntry(clientMessageId).catch((error) => {
+      console.error('Could not retry chat message:', error);
+    });
+  }, []);
 
   // Load purchased chat customization packs from inventory
   useEffect(() => {
@@ -296,6 +367,7 @@ export default function ConversationPage({ params }: ConversationPageProps) {
           optimisticMessages={optimisticMessages}
           confirmedMessages={confirmedMessages}
           onLastMessageUpdate={handleLastMessageUpdate}
+          onRetryMessage={handleRetryMessage}
         />
 
         {/* Input */}
