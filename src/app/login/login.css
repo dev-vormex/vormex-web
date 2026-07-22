@@ -177,6 +177,35 @@
     user-select: text;
 }
 
+.form__field {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 350px;
+    margin: 3px 0;
+    gap: 4px;
+}
+
+.form__field .form__input {
+    width: 100%;
+    margin: 0;
+}
+
+.form__label {
+    padding-left: 4px;
+    color: #59616a;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.25px;
+}
+
+.auth-provider-hint {
+    max-width: 350px;
+    margin-top: 16px;
+    color: #6b7280;
+    font-size: 11px;
+}
+
 .form__input:focus {
     box-shadow: inset 4px 4px 4px #d1d9e6, inset -4px -4px 4px #f9f9f9;
 }
@@ -499,6 +528,7 @@
     }
 
     .google-btn,
+    .form__field,
     .form__input,
     .swipe-button-container {
         width: 100%;
@@ -692,6 +722,11 @@
     color: #6b7280;
 }
 
+.dark .form__label,
+.dark .auth-provider-hint {
+    color: #9ca3af;
+}
+
 .dark .form__link {
     color: #ededed;
     border-bottom-color: #6b7280;
@@ -761,6 +796,15 @@
 .dark .mobile-auth-toggle__button.is-active {
     color: #f9f9f9;
     box-shadow: 0 10px 20px rgba(59, 130, 246, 0.22);
+}
+
+@media (max-width: 900px) {
+    .auth-page-wrapper .main,
+    .auth-page-wrapper .container,
+    .auth-page-wrapper .mobile-auth-toggle,
+    .auth-page-wrapper .mobile-auth-toggle__button.is-active {
+        box-shadow: none;
+    }
 }
 
 /* ── Onboarding Social Proof ── */

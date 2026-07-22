@@ -84,7 +84,7 @@ export default function MessagesLayout({ children }: MessagesLayoutProps) {
           </aside>
 
           {/* Main */}
-          <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-neutral-900">
+          <main className="flex-1 min-w-0 min-h-0 max-w-full overflow-hidden flex flex-col bg-white dark:bg-neutral-900">
             {children}
           </main>
         </div>

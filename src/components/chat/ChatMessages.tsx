@@ -311,14 +311,9 @@ export default function ChatMessages({
     const socket = initializeSocket();
 
     const appendMessage = (incomingMessage: Message) => {
-      const shouldScroll =
-        incomingMessage.senderId === currentUserId || autoScrollEnabledRef.current;
-
+      autoScrollEnabledRef.current = true;
       setMessages((previousMessages) => mergeMessages(previousMessages, [incomingMessage]));
-
-      if (shouldScroll) {
-        setAutoScrollMode('smooth');
-      }
+      setAutoScrollMode('smooth');
     };
 
     const handleNewMessage = (data: { conversationId: string; message: Message }) => {
@@ -514,11 +509,13 @@ export default function ChatMessages({
   useEffect(() => {
     const handleChatSync = (event: Event) => {
       const response = (event as CustomEvent<ChatSyncResponse>).detail;
-      const changedMessages = [...(response?.messages ?? []), ...(response?.statusChanges ?? [])]
+      const syncedMessages = (response?.messages ?? [])
+        .filter((message) => message.conversationId === conversationId);
+      const changedMessages = [...syncedMessages, ...(response?.statusChanges ?? [])]
         .filter((message) => message.conversationId === conversationId);
       if (changedMessages.length === 0) return;
 
-      if (changedMessages.some((message) => message.senderId === currentUserId)) {
+      if (syncedMessages.length > 0) {
         autoScrollEnabledRef.current = true;
         setAutoScrollMode('smooth');
       }
@@ -642,8 +639,8 @@ export default function ChatMessages({
     if (item.kind === 'optimistic') {
       const optimisticMessage = item.message;
       return (
-        <div className="flex justify-end mb-2">
-          <div className="max-w-[70%]">
+        <div className="flex w-full min-w-0 max-w-full justify-end mb-2">
+          <div className="min-w-0 max-w-[85%] sm:max-w-[70%]">
             {optimisticMessage.replyTo && (
               <div className="text-xs p-2 rounded-t-lg border-l-2 bg-blue-600/20 border-blue-400">
                 <span className="text-gray-500 text-[10px]">↩ Replying to</span>
@@ -661,7 +658,7 @@ export default function ChatMessages({
               {optimisticMessage.mediaUrl && optimisticMessage.contentType === 'video' && (
                 <video src={optimisticMessage.mediaUrl} className="mb-2 max-h-52 rounded-lg" muted />
               )}
-              <p className="break-words whitespace-pre-wrap">{optimisticMessage.content}</p>
+              <p className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">{optimisticMessage.content}</p>
             </div>
             <div className={cn(
               'text-xs text-gray-500 mt-1 flex items-center gap-1 justify-end',
@@ -687,8 +684,8 @@ export default function ChatMessages({
     if (item.kind === 'uploading') {
       const uploadingMessage = item.message;
       return (
-        <div className="flex justify-end mb-2">
-          <div className="relative max-w-[70%]">
+        <div className="flex w-full min-w-0 max-w-full justify-end mb-2">
+          <div className="relative min-w-0 max-w-[85%] sm:max-w-[70%]">
             <div className="bg-blue-600 text-white px-4 py-2 rounded-2xl rounded-br-sm">
               {uploadingMessage.preview && (uploadingMessage.type === 'image' || uploadingMessage.type === 'video') && (
                 <div className="relative mb-2 rounded-lg overflow-hidden">
@@ -740,8 +737,11 @@ export default function ChatMessages({
     <>
     <Virtuoso
       ref={virtuosoRef}
-      className={cn('flex-1 min-h-0 overscroll-contain px-4', wallpaperClasses)}
-      style={{ overflowAnchor: 'none' }}
+      className={cn(
+        'flex-1 min-h-0 min-w-0 w-full max-w-full overflow-x-hidden overscroll-contain',
+        wallpaperClasses
+      )}
+      style={{ overflowAnchor: 'none', overflowX: 'hidden' }}
       data={virtualItems}
       firstItemIndex={firstItemIndex}
       increaseViewportBy={{ top: 96, bottom: 200 }}
@@ -768,7 +768,11 @@ export default function ChatMessages({
           </div>
         ) : null,
       }}
-      itemContent={renderVirtualItem}
+      itemContent={(index, item) => (
+        <div className="box-border w-full min-w-0 max-w-full px-4">
+          {renderVirtualItem(index, item)}
+        </div>
+      )}
     />
     {/* Image Viewer Modal */}
     {viewingImage && (
@@ -914,7 +918,7 @@ function MessageBubble({
       <div 
         ref={registerRef}
         className={cn(
-          'flex items-center gap-2',
+          'flex w-full min-w-0 max-w-full items-center gap-2',
           isOwn ? 'justify-end' : 'justify-start'
         )}
       >
@@ -929,7 +933,7 @@ function MessageBubble({
     <div 
       ref={registerRef}
       className={cn(
-        'flex gap-2 group transition-all duration-300',
+        'flex w-full min-w-0 max-w-full gap-2 group transition-all duration-300',
         isOwn ? 'justify-end' : 'justify-start',
         isHighlighted && 'bg-yellow-100/50 dark:bg-yellow-900/30 -mx-2 px-2 py-1 rounded-lg'
       )}
@@ -950,7 +954,10 @@ function MessageBubble({
         </div>
       )}
 
-      <div className={cn('max-w-[70%] relative', isOwn && 'order-first')}>
+      <div className={cn(
+        'relative min-w-0 max-w-[85%] sm:max-w-[70%]',
+        isOwn && 'order-first'
+      )}>
         {/* Reply preview - clickable to scroll to original message */}
         {message.replyTo && (
           <button
@@ -1218,7 +1225,7 @@ function MessageBubble({
               <button onClick={handleEdit} className="text-xs">Save</button>
             </div>
           ) : (
-            <p className="break-words whitespace-pre-wrap">{message.content}</p>
+            <p className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">{message.content}</p>
           ))}
 
           {/* Edited indicator - only show if message was explicitly edited */}

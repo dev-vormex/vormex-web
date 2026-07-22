@@ -1,10 +1,22 @@
 import { AxiosError } from 'axios';
 import type { ApiError } from '@/types/auth';
 
+function formatRetryAfter(seconds: number): string {
+  if (seconds < 60) {
+    return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  }
+
+  const minutes = Math.ceil(seconds / 60);
+  return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+}
+
 export function handleApiError(error: unknown): string {
   if (error instanceof AxiosError) {
     const apiError = error.response?.data as ApiError | undefined;
     if (apiError?.error) {
+      if (apiError.retryAfterSeconds && apiError.retryAfterSeconds > 0) {
+        return `${apiError.error} Try again in ${formatRetryAfter(apiError.retryAfterSeconds)}.`;
+      }
       return apiError.error;
     }
     if (error.response?.status === 401) {

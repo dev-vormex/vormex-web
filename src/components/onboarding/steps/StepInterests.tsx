@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
 
 interface Props {
   initialData?: Record<string, unknown>;

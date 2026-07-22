@@ -47,5 +47,8 @@ export interface RegisterData {
 
 export interface ApiError {
   error: string;
+  code?: string;
+  retryAfterSeconds?: number;
+  requestId?: string;
   requiresVerification?: boolean;
 }

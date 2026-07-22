@@ -3,6 +3,7 @@
 import React, { useRef, useEffect } from 'react';
 import { GoogleSignInButton } from './GoogleSignInButton';
 import { OnboardingSocialProof } from './OnboardingSocialProof';
+import { PASSWORD_MIN_LENGTH } from '@/lib/validations/auth';
 
 interface SignupSectionProps {
   name: string;
@@ -158,59 +159,77 @@ export function SignupSection({
           text="Sign up with Google"
         />
         <span className="form__span">or use email for registration</span>
-        <input
-          className="form__input"
-          type="text"
-          placeholder="Name"
-          value={name}
-          onChange={(e) => onNameChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              const form = document.getElementById('a-form') as HTMLFormElement;
-              if (form) {
-                form.requestSubmit();
+        <label className="form__field" htmlFor="signup-name">
+          <span className="form__label">Name</span>
+          <input
+            id="signup-name"
+            name="name"
+            autoComplete="name"
+            className="form__input"
+            type="text"
+            placeholder="Your name"
+            value={name}
+            onChange={(e) => onNameChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                const form = document.getElementById('a-form') as HTMLFormElement;
+                if (form) {
+                  form.requestSubmit();
+                }
               }
-            }
-          }}
-          required
-        />
-        <input
-          className="form__input"
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => onEmailChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              const form = document.getElementById('a-form') as HTMLFormElement;
-              if (form) {
-                form.requestSubmit();
+            }}
+            required
+          />
+        </label>
+        <label className="form__field" htmlFor="signup-email">
+          <span className="form__label">Email</span>
+          <input
+            id="signup-email"
+            name="email"
+            autoComplete="email"
+            className="form__input"
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => onEmailChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                const form = document.getElementById('a-form') as HTMLFormElement;
+                if (form) {
+                  form.requestSubmit();
+                }
               }
-            }
-          }}
-          required
-        />
-        <input
-          className="form__input"
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => onPasswordChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              const form = document.getElementById('a-form') as HTMLFormElement;
-              if (form) {
-                form.requestSubmit();
+            }}
+            required
+          />
+        </label>
+        <label className="form__field" htmlFor="signup-password">
+          <span className="form__label">Password</span>
+          <input
+            id="signup-password"
+            name="new-password"
+            autoComplete="new-password"
+            className="form__input"
+            type="password"
+            placeholder={`At least ${PASSWORD_MIN_LENGTH} characters`}
+            value={password}
+            onChange={(e) => onPasswordChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                const form = document.getElementById('a-form') as HTMLFormElement;
+                if (form) {
+                  form.requestSubmit();
+                }
               }
-            }
-          }}
-          required
-          minLength={12}
-          maxLength={128}
-        />
+            }}
+            required
+            minLength={PASSWORD_MIN_LENGTH}
+            maxLength={128}
+          />
+        </label>
         {error && <div className="error-message">{error}</div>}
         {success && <div className="success-message">{success}</div>}
         <div className="swipe-button-container" id="swipe-btn-signup" ref={swipeButtonRef}>

@@ -151,40 +151,52 @@ export function LoginSection({
         <OnboardingSocialProof />
         <GoogleSignInButton onClick={onGoogleLogin} onError={onGoogleError} disabled={isLoading} />
         <span className="form__span">or use your email account</span>
-        <input
-          className="form__input"
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => onEmailChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              const form = document.getElementById('b-form') as HTMLFormElement;
-              if (form) {
-                form.requestSubmit();
+        <label className="form__field" htmlFor="login-email">
+          <span className="form__label">Email</span>
+          <input
+            id="login-email"
+            name="username"
+            autoComplete="username"
+            className="form__input"
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => onEmailChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                const form = document.getElementById('b-form') as HTMLFormElement;
+                if (form) {
+                  form.requestSubmit();
+                }
               }
-            }
-          }}
-          required
-        />
-        <input
-          className="form__input"
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => onPasswordChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              const form = document.getElementById('b-form') as HTMLFormElement;
-              if (form) {
-                form.requestSubmit();
+            }}
+            required
+          />
+        </label>
+        <label className="form__field" htmlFor="login-password">
+          <span className="form__label">Password</span>
+          <input
+            id="login-password"
+            name="current-password"
+            autoComplete="current-password"
+            className="form__input"
+            type="password"
+            placeholder="Your password"
+            value={password}
+            onChange={(e) => onPasswordChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                const form = document.getElementById('b-form') as HTMLFormElement;
+                if (form) {
+                  form.requestSubmit();
+                }
               }
-            }
-          }}
-          required
-        />
+            }}
+            required
+          />
+        </label>
         <a className="form__link" href="/forgot-password">Forgot your password?</a>
         {error && <div className="error-message">{error}</div>}
         {success && <div className="success-message">{success}</div>}

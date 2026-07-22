@@ -97,6 +97,36 @@ body {
 }
 
 /*
+ * Native form controls do not consistently inherit the page foreground color.
+ * Keep every onboarding field, including future steps and browser autofill,
+ * readable against both the light and dark onboarding surfaces.
+ */
+.onboarding-shell {
+  color-scheme: light;
+}
+
+.dark .onboarding-shell {
+  color-scheme: dark;
+}
+
+.onboarding-shell :where(input, textarea, select) {
+  color: var(--foreground);
+  caret-color: var(--foreground);
+}
+
+.onboarding-shell :where(input, textarea)::placeholder {
+  color: var(--muted-foreground);
+  opacity: 1;
+}
+
+.onboarding-shell :where(input, textarea, select):-webkit-autofill,
+.onboarding-shell :where(input, textarea, select):-webkit-autofill:hover,
+.onboarding-shell :where(input, textarea, select):-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--foreground);
+  caret-color: var(--foreground);
+}
+
+/*
  * Keep the compact desktop density without zooming the layout viewport.
  * CSS `zoom` also scales viewport units, leaving `100vh`/`100dvh` pages only
  * 80% as tall as the browser and exposing the document background below them.

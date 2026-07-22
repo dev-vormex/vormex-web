@@ -110,6 +110,9 @@ interface FilePreview {
 }
 
 const AI_LEARNING_MESSAGE = 'ai model is learning please give it some time';
+const TYPING_START_DELAY_MS = 600;
+const TYPING_HEARTBEAT_MS = 2000;
+const TYPING_IDLE_TIMEOUT_MS = 2500;
 
 export default function ChatInput({
   conversationId,
@@ -127,7 +130,6 @@ export default function ChatInput({
   enabledMessageEffects,
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
@@ -147,7 +149,9 @@ export default function ChatInput({
   
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingStartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingStopTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingActiveRef = useRef(false);
   const lastTypingEmitRef = useRef(0);
   const attachMenuRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -353,41 +357,57 @@ export default function ChatInput({
     };
   }, [showAttachMenu]);
 
-  // Handle typing indicator.
-  // Heartbeat instead of a single leading-edge emit: one emit can be silently
-  // dropped (socket not yet authenticated, reconnect), and the receiver
-  // auto-expires its indicator ~4.5s after the last "typing" event. Re-emitting
-  // every 2s while keystrokes continue keeps the indicator alive and
-  // self-heals dropped events.
-  const handleTyping = useCallback(() => {
+  const stopTypingBroadcast = useCallback(() => {
+    if (typingStartTimeoutRef.current) {
+      clearTimeout(typingStartTimeoutRef.current);
+      typingStartTimeoutRef.current = null;
+    }
+    if (typingStopTimeoutRef.current) {
+      clearTimeout(typingStopTimeoutRef.current);
+      typingStopTimeoutRef.current = null;
+    }
+
+    if (typingActiveRef.current) {
+      typingActiveRef.current = false;
+      sendChatTyping(conversationId, false);
+    }
+    lastTypingEmitRef.current = 0;
+  }, [conversationId]);
+
+  // Wait briefly before broadcasting typing so a single tap (or a message
+  // sent immediately after one character) does not flash the indicator. Once
+  // active, heartbeat while the user keeps typing so reconnects self-heal.
+  const handleTyping = useCallback((hasContent: boolean) => {
+    if (!hasContent) {
+      stopTypingBroadcast();
+      return;
+    }
+
     const now = Date.now();
-    if (now - lastTypingEmitRef.current >= 2000) {
+    if (typingActiveRef.current && now - lastTypingEmitRef.current >= TYPING_HEARTBEAT_MS) {
       lastTypingEmitRef.current = now;
-      setIsTyping(true);
       sendChatTyping(conversationId, true);
     }
 
-    // Clear existing timeout
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
+    if (!typingActiveRef.current && !typingStartTimeoutRef.current) {
+      typingStartTimeoutRef.current = setTimeout(() => {
+        typingStartTimeoutRef.current = null;
+        typingActiveRef.current = true;
+        lastTypingEmitRef.current = Date.now();
+        sendChatTyping(conversationId, true);
+      }, TYPING_START_DELAY_MS);
     }
 
-    // Set new timeout to stop typing indicator
-    typingTimeoutRef.current = setTimeout(() => {
-      setIsTyping(false);
-      lastTypingEmitRef.current = 0;
-      sendChatTyping(conversationId, false);
-    }, 2500);
-  }, [conversationId]);
+    if (typingStopTimeoutRef.current) {
+      clearTimeout(typingStopTimeoutRef.current);
+    }
+    typingStopTimeoutRef.current = setTimeout(stopTypingBroadcast, TYPING_IDLE_TIMEOUT_MS);
+  }, [conversationId, stopTypingBroadcast]);
 
-  // Clean up typing timeout
+  // Stop a live indicator when switching conversations or unmounting.
   useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-    };
-  }, []);
+    return stopTypingBroadcast;
+  }, [stopTypingBroadcast]);
 
   // Get file type category
   const getFileType = (file: File): 'image' | 'video' | 'document' | 'audio' | null => {
@@ -594,14 +614,8 @@ export default function ChatInput({
       return;
     }
 
-    // Immediately clear typing state and stop broadcasting
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = null;
-    }
-    setIsTyping(false);
-    lastTypingEmitRef.current = 0;
-    sendChatTyping(conversationId, false);
+    // Immediately clear typing state and stop broadcasting.
+    stopTypingBroadcast();
 
     // Update local message limit tracking
     if (messageLimitInfo && !messageLimitInfo.isConnected) {
@@ -785,6 +799,10 @@ export default function ChatInput({
         createdAt,
       };
 
+      // Render before IndexedDB and network work so the sender sees the
+      // pending bubble in the same frame as the button/key press.
+      onOptimisticMessage?.(optimisticMsg);
+
       try {
         await putChatOutboxEntry({
           clientMessageId: optimisticId,
@@ -797,7 +815,6 @@ export default function ChatInput({
           attempts: 0,
           status: 'pending',
         });
-        onOptimisticMessage?.(optimisticMsg);
         await submitMessage({
           content: textToSend,
           contentType: 'text',
@@ -826,6 +843,7 @@ export default function ChatInput({
     selectedFiles,
     selectedMessageEffect,
     submitMessage,
+    stopTypingBroadcast,
     triggerMessageEffect,
   ]);
 
@@ -837,8 +855,9 @@ export default function ChatInput({
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setMessage(e.target.value);
-    handleTyping();
+    const nextMessage = e.target.value;
+    setMessage(nextMessage);
+    handleTyping(Boolean(nextMessage.trim()));
   };
 
   const handleEmojiClick = (emoji: string) => {

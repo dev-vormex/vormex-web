@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { onboardingAPI } from '@/lib/api/onboarding';
 import { useAuthContext } from '@/lib/auth/authContext';
+import { handleApiError } from '@/lib/utils/errorHandler';
 import StepProfile from './steps/StepProfile';
 import StepInterests from './steps/StepInterests';
 import StepMatches from './steps/StepMatches';
@@ -42,8 +43,7 @@ export default function OnboardingWizard() {
       }
     } catch (err: unknown) {
       console.error('Failed to save step:', err);
-      const message = err instanceof Error ? err.message : 'Failed to save. Please try again.';
-      setError(typeof (err as any)?.response?.data?.error === 'string' ? (err as any).response.data.error : message);
+      setError(handleApiError(err));
     } finally {
       setSaving(false);
     }
@@ -58,7 +58,7 @@ export default function OnboardingWizard() {
 
   const handleFinish = useCallback(() => {
     if (user) {
-      updateUser({ ...user, onboardingCompleted: true } as any);
+      updateUser({ ...user, onboardingCompleted: true });
     }
     router.replace('/');
   }, [router, user, updateUser]);
@@ -72,7 +72,7 @@ export default function OnboardingWizard() {
   };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-neutral-950 flex flex-col">
+    <div className="onboarding-shell min-h-screen bg-white dark:bg-neutral-950 flex flex-col">
       {/* Header */}
       <header className="px-5 pt-5 pb-2 flex items-center justify-between max-w-lg mx-auto w-full">
         <div className="flex items-center gap-3">
@@ -134,7 +134,6 @@ export default function OnboardingWizard() {
                 initialData={stepData[0]}
                 onComplete={(data) => handleStepComplete(0, data)}
                 saving={saving}
-                userName={user?.name || ''}
                 userCollege={user?.college || ''}
               />
             )}

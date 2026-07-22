@@ -7,7 +7,6 @@ interface Props {
   initialData?: Record<string, unknown>;
   onComplete: (data: Record<string, unknown>) => void;
   saving: boolean;
-  userName: string;
   userCollege: string;
 }
 
@@ -35,7 +34,7 @@ const LOOKING_FOR = [
   { id: 'hackathon_team', label: 'Hackathon Teammate' },
 ];
 
-export default function StepProfile({ initialData, onComplete, saving, userName, userCollege }: Props) {
+export default function StepProfile({ initialData, onComplete, saving, userCollege }: Props) {
   const [college, setCollege] = useState<string>((initialData?.college as string) || userCollege || '');
   const [primaryGoal, setPrimaryGoal] = useState<string>((initialData?.primaryGoal as string) || '');
   const [lookingFor, setLookingFor] = useState<string[]>((initialData?.lookingFor as string[]) || []);

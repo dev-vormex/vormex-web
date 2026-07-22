@@ -3,7 +3,7 @@
 import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authAPI } from '@/lib/api/auth';
-import { resetPasswordSchema } from '@/lib/validations/auth';
+import { PASSWORD_MIN_LENGTH, resetPasswordSchema } from '@/lib/validations/auth';
 import { handleApiError } from '@/lib/utils/errorHandler';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import Link from 'next/link';
@@ -92,7 +92,7 @@ function ResetPasswordContent() {
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             required
-            minLength={12}
+            minLength={PASSWORD_MIN_LENGTH}
             maxLength={128}
           />
           <input
@@ -102,7 +102,7 @@ function ResetPasswordContent() {
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             required
-            minLength={12}
+            minLength={PASSWORD_MIN_LENGTH}
             maxLength={128}
           />
           {error && <div className="error-message">{error}</div>}

@@ -39,7 +39,7 @@ function ForgotPasswordContent() {
         return;
       }
 
-      await authAPI.forgotPassword(email);
+      await authAPI.forgotPassword(validationResult.data.email);
       setSuccess('If the email exists, a password reset link has been sent to your inbox.');
     } catch (err) {
       setError(handleApiError(err));
@@ -57,21 +57,30 @@ function ForgotPasswordContent() {
         <form className="form" onSubmit={handleForgotPassword}>
           <h2 className="form_title title">Forgot Password</h2>
           <p className="description" style={{ marginBottom: '20px' }}>
-            Enter your email address and we'll send you a link to reset your password.
+            Enter your email address and we&apos;ll send you a link to reset your password.
           </p>
-          <input
-            className="form__input"
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
+          <label className="form__field" htmlFor="forgot-email">
+            <span className="form__label">Email</span>
+            <input
+              id="forgot-email"
+              name="email"
+              autoComplete="email"
+              className="form__input"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </label>
           {error && <div className="error-message">{error}</div>}
           {success && <div className="success-message">{success}</div>}
           <button type="submit" className="button" disabled={isLoading}>
             {isLoading ? 'Sending...' : 'Send Reset Link'}
           </button>
+          <p className="description auth-provider-hint">
+            Created your account with Google? Return to sign in and choose Continue with Google instead.
+          </p>
           <Link href="/login" className="form__link" style={{ marginTop: '20px' }}>
             Back to Login
           </Link>
