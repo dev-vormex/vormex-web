@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { ProfileLink } from '@/components/profile/ProfileLink';
 import {
   ThumbsUp,
   MessageCircle,
@@ -715,7 +716,7 @@ export function PostCard({
     >
       {/* Header */}
       <div className="flex items-start justify-between p-4">
-        <Link href={`/profile/${post.author.username}`} className="flex items-center gap-3">
+        <ProfileLink profileId={post.author.username} className="flex items-center gap-3">
           <UserAvatar
             imageSrc={post.author.profileImage}
             name={post.author.name}
@@ -738,7 +739,7 @@ export function PostCard({
               {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
             </p>
           </div>
-        </Link>
+        </ProfileLink>
         
         {/* Menu */}
         <div className="relative">

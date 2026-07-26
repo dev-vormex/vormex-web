@@ -11,13 +11,13 @@ function isAbsoluteUrl(input: string): boolean {
   return /^https?:\/\//i.test(input.trim());
 }
 
-function resolveApiUrl(): string {
-  const publicApiUrl = process.env.NEXT_PUBLIC_API_URL;
+export function resolveApiUrl(env: Partial<NodeJS.ProcessEnv> = process.env): string {
+  const publicApiUrl = env.NEXT_PUBLIC_API_URL;
   if (publicApiUrl) {
     return normalizeApiUrl(publicApiUrl);
   }
 
-  const publicBackendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const publicBackendUrl = env.NEXT_PUBLIC_BACKEND_URL;
   if (publicBackendUrl) {
     return normalizeApiUrl(publicBackendUrl);
   }
@@ -30,23 +30,23 @@ function resolveApiUrl(): string {
 export const API_URL = resolveApiUrl();
 export const BACKEND_ORIGIN = API_URL.replace(/\/api$/, '');
 
-function resolveSocketUrl(): string {
-  const explicitSocketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
+export function resolveSocketUrl(env: Partial<NodeJS.ProcessEnv> = process.env): string {
+  const explicitSocketUrl = env.NEXT_PUBLIC_SOCKET_URL;
   if (explicitSocketUrl) {
     return normalizeOriginUrl(explicitSocketUrl);
   }
 
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const backendUrl = env.NEXT_PUBLIC_BACKEND_URL;
   if (backendUrl && isAbsoluteUrl(backendUrl)) {
     return normalizeOriginUrl(backendUrl);
   }
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const apiUrl = env.NEXT_PUBLIC_API_URL;
   if (apiUrl && isAbsoluteUrl(apiUrl)) {
     return normalizeOriginUrl(apiUrl.replace(/\/api\/?$/, ''));
   }
 
-  return process.env.NODE_ENV === 'production'
+  return env.NODE_ENV === 'production'
     ? 'https://vormex-backend.onrender.com'
     : 'http://localhost:5000';
 }

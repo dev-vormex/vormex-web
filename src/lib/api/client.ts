@@ -7,6 +7,7 @@ import { getInstallHeaders } from '@/lib/device/installId';
 const CSRF_COOKIE = 'vx_csrf';
 const AUTH_PRESENT_COOKIE = 'vx_auth_present';
 const UNSAFE_METHODS = new Set(['post', 'put', 'patch', 'delete']);
+const API_TIMEOUT_MS = 15_000;
 
 interface RetriableRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
@@ -39,6 +40,8 @@ function redirectToLoginIfNeeded(isAuthRequest: boolean): Promise<never> | null 
 // Create axios instance with base configuration
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_URL,
+  // Bound interactive requests so page loaders always settle into success or retry UI.
+  timeout: API_TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -92,6 +95,11 @@ apiClient.interceptors.response.use(
       url.includes('/auth/verify-email') ||
       url.includes('/auth/resend-verification');
 
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+      // Existing page-level error states display this message and expose their retry action.
+      error.message = 'Request timed out. Please try again.';
+    }
+
     if (status === 401 && originalRequest && !originalRequest._retry && !isAuthRequest) {
       originalRequest._retry = true;
 
@@ -101,6 +109,7 @@ apiClient.interceptors.response.use(
           {},
           {
             withCredentials: true,
+            timeout: API_TIMEOUT_MS,
             headers: {
               'Content-Type': 'application/json',
               ...getInstallHeaders(),

@@ -53,6 +53,7 @@ import {
 } from '@/lib/api/people';
 import { useAuth } from '@/lib/auth/useAuth';
 import { FIND_PEOPLE_STALE_TIME, queryKeys } from '@/lib/queryKeys';
+import { handleApiError, isApiTimeoutError } from '@/lib/utils/errorHandler';
 
 type TabType = 'known' | 'all' | 'smart' | 'suggestions' | 'college' | 'nearby';
 
@@ -314,6 +315,8 @@ export function FindPeople() {
   );
   const [loading, setLoading] = useState(() => !cachedInitialData);
   const [sectionLoading, setSectionLoading] = useState(false);
+  const [sectionError, setSectionError] = useState<string | null>(null);
+  const [sectionRetryVersion, setSectionRetryVersion] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(
@@ -387,7 +390,7 @@ export function FindPeople() {
       };
     },
     staleTime: FIND_PEOPLE_STALE_TIME,
-    retry: 2,
+    retry: (failureCount, error) => !isApiTimeoutError(error) && failureCount < 2,
   });
 
   const { data: filterOptionsData } = useQuery({
@@ -428,17 +431,20 @@ export function FindPeople() {
     if (activeTab !== 'suggestions' || suggestionsLoaded) return;
     let cancelled = false;
     setSectionLoading(true);
+    setSectionError(null);
     getSuggestions(PEOPLE_PAGE_SIZE, 1)
       .then((result) => {
         if (cancelled) return;
         setSuggestions(result.suggestions);
         setSuggestionsPage(1);
         setSuggestionsHasMore(Boolean(result.hasMore));
+        setSuggestionsLoaded(true);
       })
-      .catch((error) => console.error('Failed to load suggestions:', error))
+      .catch((error) => {
+        if (!cancelled) setSectionError(handleApiError(error));
+      })
       .finally(() => {
         if (!cancelled) {
-          setSuggestionsLoaded(true);
           setSectionLoading(false);
         }
       });
@@ -446,23 +452,26 @@ export function FindPeople() {
       cancelled = true;
       setSectionLoading(false);
     };
-  }, [activeTab, suggestionsLoaded]);
+  }, [activeTab, sectionRetryVersion, suggestionsLoaded]);
 
   useEffect(() => {
     if (activeTab !== 'college' || colleagueLoaded) return;
     let cancelled = false;
     setSectionLoading(true);
+    setSectionError(null);
     getPeopleFromSameCollege(PEOPLE_PAGE_SIZE, 1)
       .then((result) => {
         if (cancelled) return;
         setColleaguePeople(result.people);
         setColleaguePage(1);
         setColleagueHasMore(Boolean(result.hasMore));
+        setColleagueLoaded(true);
       })
-      .catch((error) => console.error('Failed to load same-campus people:', error))
+      .catch((error) => {
+        if (!cancelled) setSectionError(handleApiError(error));
+      })
       .finally(() => {
         if (!cancelled) {
-          setColleagueLoaded(true);
           setSectionLoading(false);
         }
       });
@@ -470,7 +479,7 @@ export function FindPeople() {
       cancelled = true;
       setSectionLoading(false);
     };
-  }, [activeTab, colleagueLoaded]);
+  }, [activeTab, colleagueLoaded, sectionRetryVersion]);
 
   // Fetch on search / filter change; fall back to cached initial data when neither is set
   useEffect(() => {
@@ -525,7 +534,7 @@ export function FindPeople() {
   };
 
   // Load more people
-  const loadMore = useCallback(async () => {
+  const loadMore = useCallback(async (force = false) => {
     const activeHasMore =
       activeTab === 'all'
         ? hasMore
@@ -534,7 +543,7 @@ export function FindPeople() {
           : activeTab === 'college'
             ? colleagueHasMore
             : false;
-    if (loadingMore || !activeHasMore) return;
+    if (loadingMore || (!activeHasMore && !force)) return;
 
     setLoadingMore(true);
 
@@ -567,6 +576,10 @@ export function FindPeople() {
       }
     } catch (error) {
       console.error('Failed to load more:', error);
+      setSectionError(handleApiError(error));
+      if (activeTab === 'all') setHasMore(false);
+      if (activeTab === 'suggestions') setSuggestionsHasMore(false);
+      if (activeTab === 'college') setColleagueHasMore(false);
     } finally {
       setLoadingMore(false);
     }
@@ -596,7 +609,7 @@ export function FindPeople() {
           (activeTab === 'suggestions' && suggestionsHasMore) ||
           (activeTab === 'college' && colleagueHasMore);
         if (entries[0].isIntersecting && canLoad && !loadingMore) {
-          loadMore();
+          void loadMore();
         }
       },
       { threshold: 0.1 }
@@ -662,6 +675,18 @@ export function FindPeople() {
     (activeTab === 'suggestions' && suggestionsHasMore) ||
     (activeTab === 'college' && colleagueHasMore);
   const showSidebar = activeTab === 'all';
+
+  const retryActiveGrid = () => {
+    setSectionError(null);
+    if (activeTab === 'all') {
+      // Only load-more failures use this error state for the main grid.
+      void loadMore(true);
+      return;
+    }
+    if (activeTab === 'suggestions') setSuggestionsLoaded(false);
+    if (activeTab === 'college') setColleagueLoaded(false);
+    setSectionRetryVersion((version) => version + 1);
+  };
 
   const filterPanelProps: FilterPanelProps = {
     filterOptions,
@@ -777,7 +802,10 @@ export function FindPeople() {
             {tabItems.map(({ id, label, Icon }) => (
               <button
                 key={id}
-                onClick={() => setActiveTab(id)}
+                onClick={() => {
+                  setSectionError(null);
+                  setActiveTab(id);
+                }}
                 className={`flex items-center gap-2 px-4 py-3 border-b-2 text-sm font-medium whitespace-nowrap transition-colors ${
                   activeTab === id
                     ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
@@ -841,7 +869,7 @@ export function FindPeople() {
           )}
 
           {/* Error State */}
-          {isGridTab && !isGridLoading && initialError && (
+          {activeTab === 'all' && !isGridLoading && initialError && (
             <div className="text-center py-16 bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800">
               <AlertCircle className="w-12 h-12 mx-auto text-red-400 mb-4" />
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
@@ -859,8 +887,22 @@ export function FindPeople() {
             </div>
           )}
 
+          {isGridTab && !isGridLoading && sectionError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-12 text-center dark:border-red-900/60 dark:bg-red-950/20">
+              <AlertCircle className="mx-auto mb-4 h-12 w-12 text-red-400" />
+              <p className="text-sm text-red-600 dark:text-red-400">{sectionError}</p>
+              <button
+                type="button"
+                onClick={retryActiveGrid}
+                className="mt-4 rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
           {/* Empty State */}
-          {isGridTab && !isGridLoading && !initialError && displayedPeople.length === 0 && (
+          {isGridTab && !isGridLoading && !(activeTab === 'all' && initialError) && !sectionError && displayedPeople.length === 0 && (
             <div className="text-center py-16 bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800">
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
                 <Users className="w-8 h-8 text-gray-400 dark:text-neutral-500" />
@@ -914,7 +956,7 @@ export function FindPeople() {
                 <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
               ) : (
                 <button
-                  onClick={loadMore}
+                  onClick={() => void loadMore()}
                   className="flex items-center gap-2 px-6 py-2 rounded-full border border-gray-300 dark:border-neutral-700 text-sm font-semibold text-gray-600 dark:text-neutral-400 hover:bg-white dark:hover:bg-neutral-900 hover:text-gray-800 dark:hover:text-neutral-200 transition-colors"
                 >
                   <RefreshCw className="w-4 h-4" />

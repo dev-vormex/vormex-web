@@ -3,6 +3,7 @@
 import apiClient from './client';
 import type {
   FullProfileResponse,
+  CoreProfileResponse,
   ProfileUpdateData,
   ActivityHeatmapResponse,
   ActivityYearsResponse,
@@ -35,11 +36,62 @@ export async function uploadCompanyLogo(file: File): Promise<{ logoUrl: string }
 }
 
 /**
- * Get full user profile with all data
+ * Get the small profile header/stats payload used to make navigation visible.
  * @param usernameOrId - Username or user ID
  */
-export async function getProfile(usernameOrId: string): Promise<FullProfileResponse> {
+export async function getCoreProfile(usernameOrId: string): Promise<CoreProfileResponse> {
   return apiClient.get(`/users/${usernameOrId}/profile`);
+}
+
+/** Get the deferred profile bundle for the lower sections. */
+export async function getProfile(usernameOrId: string): Promise<FullProfileResponse> {
+  return apiClient.get(`/users/${usernameOrId}/profile`, { params: { include: 'all' } });
+}
+
+export function profileQueryAliases(
+  requestedId: string,
+  profile: Pick<CoreProfileResponse, 'user'>
+): string[] {
+  return Array.from(
+    new Set(
+      [
+        requestedId,
+        profile.user.id,
+        profile.user.username,
+        `@${profile.user.username}`,
+      ]
+        .map(value => value.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+export function materializeCoreProfile(
+  core: CoreProfileResponse,
+  existing?: FullProfileResponse | null
+): FullProfileResponse {
+  return {
+    user: { ...(existing?.user || {}), ...core.user },
+    stats: core.stats,
+    github: existing?.github || {
+      connected: false,
+      username: null,
+      avatarUrl: null,
+      profileUrl: null,
+      stats: null,
+      contributionCalendar: null,
+      lastSyncedAt: null,
+    },
+    activityHeatmap: existing?.activityHeatmap || [],
+    recentActivity: existing?.recentActivity || { items: [], totalCount: 0, hasMore: false },
+    skills: existing?.skills || [],
+    experiences: existing?.experiences || [],
+    education: existing?.education || [],
+    projects: existing?.projects || [],
+    certificates: existing?.certificates || [],
+    achievements: existing?.achievements || [],
+    viewerContext: core.viewerContext || existing?.viewerContext,
+  };
 }
 
 /**
@@ -364,6 +416,7 @@ export async function getGitHubStats(): Promise<{
 
 // Default export for convenience
 export const profileAPI = {
+  getCoreProfile,
   getProfile,
   updateProfile,
   updateAvatar,

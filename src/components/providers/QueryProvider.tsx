@@ -12,6 +12,7 @@ import {
   STANDARD_GC_TIME,
   STANDARD_STALE_TIME,
 } from '@/lib/queryKeys';
+import { isApiTimeoutError } from '@/lib/utils/errorHandler';
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -22,12 +23,15 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
             staleTime: STANDARD_STALE_TIME,
             gcTime: STANDARD_GC_TIME,
             refetchOnWindowFocus: false,
+            // A timeout should immediately reach the page's visible Retry state.
+            retry: (failureCount, error) => !isApiTimeoutError(error) && failureCount < 3,
           },
         },
       });
 
       client.setQueryDefaults(['feed'], { staleTime: FEED_STALE_TIME });
       client.setQueryDefaults(['profile'], { staleTime: PROFILE_STALE_TIME });
+      client.setQueryDefaults(['profile-core'], { staleTime: PROFILE_STALE_TIME });
       client.setQueryDefaults(['profile-activity-years'], { staleTime: ACTIVITY_STALE_TIME });
       client.setQueryDefaults(['profile-activity-heatmap'], { staleTime: ACTIVITY_STALE_TIME });
       client.setQueryDefaults(['find-people-initial'], { staleTime: FIND_PEOPLE_STALE_TIME });

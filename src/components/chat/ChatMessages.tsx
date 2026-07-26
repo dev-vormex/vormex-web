@@ -33,6 +33,7 @@ import {
 import { mergeMessages, normalizeMessage } from '@/lib/chat/messageCache';
 import { CHAT_SYNC_EVENT } from './ChatOutboxCoordinator';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
+import { handleApiError } from '@/lib/utils/errorHandler';
 
 const INITIAL_FIRST_ITEM_INDEX = 100_000;
 
@@ -106,6 +107,7 @@ export default function ChatMessages({
   );
   const [loading, setLoading] = useState(() => !cachedMessagesResponse);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(() => cachedMessagesResponse?.hasMore ?? false);
   const [nextCursor, setNextCursor] = useState<string | undefined>(
     () => cachedMessagesResponse?.nextCursor
@@ -211,6 +213,7 @@ export default function ChatMessages({
 
     try {
       activeFetchKeyRef.current = fetchKey;
+      setFetchError(null);
 
       if (cursor) {
         setLoadingMore(true);
@@ -266,6 +269,8 @@ export default function ChatMessages({
       setNextCursor(preserveCachedHistoryCursor ? nextCursorRef.current : result.nextCursor);
     } catch (err: unknown) {
       console.error('Failed to fetch messages:', err);
+      setFetchError(handleApiError(err));
+      if (cursor) setHasMore(false);
     } finally {
       activeFetchKeyRef.current = null;
       setLoading(false);
@@ -592,6 +597,21 @@ export default function ChatMessages({
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (fetchError && messages.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+        <p className="text-sm text-red-600 dark:text-red-400">{fetchError}</p>
+        <button
+          type="button"
+          onClick={() => void fetchMessages()}
+          className="rounded-full border border-blue-600 px-5 py-1.5 text-sm font-semibold text-blue-600 transition-colors hover:bg-blue-50 dark:border-blue-400 dark:text-blue-400 dark:hover:bg-blue-950/40"
+        >
+          Retry
+        </button>
       </div>
     );
   }

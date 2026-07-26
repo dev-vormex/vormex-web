@@ -4,7 +4,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import Link from 'next/link';
+import { ProfileLink } from '@/components/profile/ProfileLink';
 import ConnectionSentToast from '@/components/engagement/ConnectionSentToast';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
@@ -260,7 +260,7 @@ export function PersonCard({ person, onConnectionChange, badgeLabel }: PersonCar
 
       {/* Avatar — centered, overlapping banner */}
       <div className="flex justify-center">
-        <Link href={`/profile/${person.username}`} className="relative -mt-10">
+        <ProfileLink profileId={person.username} className="relative -mt-10">
           <UserAvatar
             imageSrc={person.profileImage}
             name={person.name}
@@ -273,12 +273,12 @@ export function PersonCard({ person, onConnectionChange, badgeLabel }: PersonCar
               title="Online"
             />
           )}
-        </Link>
+        </ProfileLink>
       </div>
 
       {/* Info — centered */}
       <div className="flex flex-col flex-1 items-center text-center px-4 pt-2 pb-4">
-        <Link href={`/profile/${person.username}`} className="group/name">
+        <ProfileLink profileId={person.username} className="group/name">
           <h3 className="inline-flex max-w-full items-center justify-center gap-1.5 font-semibold text-base text-gray-900 dark:text-white group-hover/name:underline underline-offset-2">
             <span className="truncate">{person.name}</span>
             <VerificationBadge
@@ -287,7 +287,7 @@ export function PersonCard({ person, onConnectionChange, badgeLabel }: PersonCar
               size="small"
             />
           </h3>
-        </Link>
+        </ProfileLink>
         <p className="text-xs text-gray-500 dark:text-neutral-400">@{person.username}</p>
 
         {badgeLabel && (

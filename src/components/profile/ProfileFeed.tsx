@@ -24,6 +24,7 @@ import type { FeedItem, RecentActivity } from '@/types/profile';
 import type { Post } from '@/types/post'; // Added Post type
 import { useAuth } from '@/lib/auth/useAuth';
 import { EditPostModal } from '@/components/feed/EditPostModal';
+import { handleApiError } from '@/lib/utils/errorHandler';
 
 interface ProfileFeedProps {
   userId: string;
@@ -47,6 +48,7 @@ export function ProfileFeed({ userId, initialFeed }: ProfileFeedProps) {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Edit/Delete State
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -57,41 +59,49 @@ export function ProfileFeed({ userId, initialFeed }: ProfileFeedProps) {
   // Check ownership
   const isOwner = user?.id === userId;
 
-  // Fetch feed when tab changes
-  useEffect(() => {
-    const fetchFeed = async () => {
-      setLoading(true);
-      try {
-        const response = await getUserFeed(userId, 1, 20, activeTab);
-        setItems(response.items);
-        setHasMore(response.hasMore);
-        setPage(1);
-      } catch (error) {
-        console.error('Failed to fetch feed:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchFeed = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await getUserFeed(userId, 1, 20, activeTab);
+      setItems(response.items);
+      setHasMore(response.hasMore);
+      setPage(1);
+    } catch (requestError) {
+      console.error('Failed to fetch feed:', requestError);
+      // Stop automatic pagination attempts until the user explicitly retries.
+      setHasMore(false);
+      setError(handleApiError(requestError));
+    } finally {
+      setLoading(false);
+    }
+  }, [activeTab, userId]);
 
+  // Fetch feed when tab changes.
+  useEffect(() => {
     // Only fetch if we don't have initial data or tab changed
     if (!initialFeed || activeTab !== 'all') {
-      fetchFeed();
+      void fetchFeed();
     }
-  }, [userId, activeTab, initialFeed]);
+  }, [activeTab, fetchFeed, initialFeed]);
 
   // Load more
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
 
     setLoadingMore(true);
+    setError(null);
     try {
       const nextPage = page + 1;
       const response = await getUserFeed(userId, nextPage, 20, activeTab);
       setItems((prev) => [...prev, ...response.items]);
       setHasMore(response.hasMore);
       setPage(nextPage);
-    } catch (error) {
-      console.error('Failed to load more:', error);
+    } catch (requestError) {
+      console.error('Failed to load more:', requestError);
+      // A failed page remains user-retryable without re-triggering on scroll.
+      setHasMore(false);
+      setError(handleApiError(requestError));
     } finally {
       setLoadingMore(false);
     }
@@ -211,7 +221,18 @@ export function ProfileFeed({ userId, initialFeed }: ProfileFeedProps) {
 
           {/* Content */}
           <Tabs.Content value={activeTab}>
-            {loading ? (
+            {error ? (
+              <div className="flex flex-col items-center gap-3 py-12 text-center">
+                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                <button
+                  type="button"
+                  onClick={() => void fetchFeed()}
+                  className="border border-neutral-300 px-5 py-2 text-xs font-bold uppercase tracking-wider text-neutral-900 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-900"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : loading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-8 h-8 text-neutral-400 animate-spin" />
               </div>

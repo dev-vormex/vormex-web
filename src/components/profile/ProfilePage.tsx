@@ -7,6 +7,9 @@ import { AlertCircle, RefreshCw, Lock, Rss } from 'lucide-react';
 import { useAuth } from '@/lib/auth/useAuth';
 import {
   getProfile,
+  getCoreProfile,
+  materializeCoreProfile,
+  profileQueryAliases,
   getActivityHeatmap,
   getActivityYears,
   syncGitHubStats,
@@ -36,7 +39,7 @@ import { AddCertificateModal } from './AddCertificateModal';
 import { ImageUploadModal } from './ImageUploadModal';
 import { ProfileSkeleton } from './ProfileSkeleton';
 import { Button } from '@/components/ui/Button';
-import type { FullProfileResponse, ActivityHeatmapDay, ActivityYearsResponse, Project, UserSkill, Experience, Education, Achievement, Certificate } from '@/types/profile';
+import type { FullProfileResponse, CoreProfileResponse, ProfileViewerContext, ActivityHeatmapDay, ActivityYearsResponse, Project, UserSkill, Experience, Education, Achievement, Certificate } from '@/types/profile';
 import { ACTIVITY_STALE_TIME, PROFILE_STALE_TIME, queryKeys } from '@/lib/queryKeys';
 
 interface ProfilePageProps {
@@ -56,9 +59,13 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
   const targetUserId = resolvedUserId ?? (isAuthenticated && authUser?.id ? authUser.id : null);
   const isOwner = isAuthenticated && authUser && authUser.id === targetUserId;
 
-  const cachedProfile = targetUserId
+  const cachedBundle = targetUserId
     ? queryClient.getQueryData<FullProfileResponse>(queryKeys.profile(targetUserId)) ?? null
     : null;
+  const cachedCore = targetUserId
+    ? queryClient.getQueryData<CoreProfileResponse>(queryKeys.profileCore(targetUserId)) ?? null
+    : null;
+  const cachedProfile = cachedBundle || (cachedCore ? materializeCoreProfile(cachedCore) : null);
   const cachedActivityYears = cachedProfile?.user.id
     ? queryClient.getQueryData<ActivityYearsResponse>(
         queryKeys.profileActivityYears(cachedProfile.user.id)
@@ -100,8 +107,19 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
   const commitProfile = useCallback((nextProfile: FullProfileResponse) => {
     setProfile(nextProfile);
     if (targetUserId) {
-      queryClient.setQueryData(queryKeys.profile(targetUserId), nextProfile);
+      for (const alias of profileQueryAliases(targetUserId, nextProfile)) {
+        queryClient.setQueryData(queryKeys.profile(alias), nextProfile);
+      }
     }
+  }, [queryClient, targetUserId]);
+
+  const commitCoreProfile = useCallback((core: CoreProfileResponse) => {
+    if (targetUserId) {
+      for (const alias of profileQueryAliases(targetUserId, core)) {
+        queryClient.setQueryData(queryKeys.profileCore(alias), core);
+      }
+    }
+    setProfile((currentProfile) => materializeCoreProfile(core, currentProfile));
   }, [queryClient, targetUserId]);
 
   const updateProfileState = useCallback(
@@ -110,12 +128,50 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
         if (!currentProfile) return currentProfile;
         const nextProfile = updater(currentProfile);
         if (targetUserId) {
-          queryClient.setQueryData(queryKeys.profile(targetUserId), nextProfile);
+          for (const alias of profileQueryAliases(targetUserId, nextProfile)) {
+            queryClient.setQueryData(queryKeys.profile(alias), nextProfile);
+            queryClient.setQueryData<CoreProfileResponse>(
+              queryKeys.profileCore(alias),
+              currentCore => currentCore
+                ? {
+                    ...currentCore,
+                    user: { ...currentCore.user, ...nextProfile.user },
+                    stats: nextProfile.stats,
+                    viewerContext: {
+                      ...currentCore.viewerContext,
+                      ...nextProfile.viewerContext,
+                    },
+                  }
+                : currentCore
+            );
+          }
         }
         return nextProfile;
       });
     },
     [queryClient, targetUserId]
+  );
+
+  const handleViewerContextChange = useCallback(
+    (patch: Partial<ProfileViewerContext>, followersDelta = 0) => {
+      updateProfileState(currentProfile => ({
+        ...currentProfile,
+        stats: followersDelta === 0
+          ? currentProfile.stats
+          : {
+              ...currentProfile.stats,
+              followersCount: Math.max(
+                0,
+                currentProfile.stats.followersCount + followersDelta
+              ),
+            },
+        viewerContext: {
+          ...currentProfile.viewerContext,
+          ...patch,
+        },
+      }));
+    },
+    [updateProfileState]
   );
 
   // Handler for avatar update
@@ -328,9 +384,13 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
   useEffect(() => {
     if (!targetUserId) return;
 
-    const warmProfile = queryClient.getQueryData<FullProfileResponse>(
+    const warmBundle = queryClient.getQueryData<FullProfileResponse>(
       queryKeys.profile(targetUserId)
     );
+    const warmCore = queryClient.getQueryData<CoreProfileResponse>(
+      queryKeys.profileCore(targetUserId)
+    );
+    const warmProfile = warmBundle || (warmCore ? materializeCoreProfile(warmCore) : null);
 
     if (!warmProfile) {
       setProfile(null);
@@ -377,7 +437,11 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
       return;
     }
 
-    if (!background || !queryClient.getQueryData(queryKeys.profile(targetUserId))) {
+    if (
+      !background ||
+      (!queryClient.getQueryData(queryKeys.profile(targetUserId)) &&
+        !queryClient.getQueryData(queryKeys.profileCore(targetUserId)))
+    ) {
       setLoading(true);
     }
     setError(null);
@@ -385,23 +449,41 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
 
     try {
       console.log('Fetching profile for:', targetUserId);
-      const data = await queryClient.fetchQuery({
-        queryKey: queryKeys.profile(targetUserId),
-        queryFn: () => getProfile(targetUserId),
+      const core = await queryClient.fetchQuery({
+        queryKey: queryKeys.profileCore(targetUserId),
+        queryFn: () => getCoreProfile(targetUserId),
         staleTime: PROFILE_STALE_TIME,
       });
-      console.log('Profile API response - user.profileRing:', data?.user?.profileRing);
-      commitProfile(data);
-      setActivityData(data.activityHeatmap || []);
+      commitCoreProfile(core);
       setLoading(false);
 
       queryClient.fetchQuery({
-        queryKey: queryKeys.profileActivityYears(data.user.id),
-        queryFn: () => getActivityYears(data.user.id),
+        queryKey: queryKeys.profileActivityYears(core.user.id),
+        queryFn: () => getActivityYears(core.user.id),
         staleTime: ACTIVITY_STALE_TIME,
       })
         .then(years => setAvailableYears(years))
         .catch(err => console.error('Failed to fetch activity years:', err));
+
+      // The expensive bundle never blocks the header/about paint.
+      void queryClient.fetchQuery({
+        queryKey: queryKeys.profile(targetUserId),
+        queryFn: () => getProfile(targetUserId),
+        staleTime: PROFILE_STALE_TIME,
+      }).then((bundle) => {
+        const mergedBundle: FullProfileResponse = {
+          ...bundle,
+          user: { ...core.user, ...bundle.user },
+          viewerContext: {
+            ...core.viewerContext,
+            ...bundle.viewerContext,
+          },
+        };
+        commitProfile(mergedBundle);
+        setActivityData(mergedBundle.activityHeatmap || []);
+      }).catch((bundleError) => {
+        console.error('Deferred profile bundle failed:', bundleError);
+      });
     } catch (err: unknown) {
       const error = err as {
         response?: {
@@ -439,7 +521,7 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
       }
       setLoading(false);
     }
-  }, [authUser, commitProfile, isAuthenticated, isOwner, queryClient, targetUserId, userId]);
+  }, [authUser, commitCoreProfile, commitProfile, isAuthenticated, isOwner, queryClient, targetUserId, userId]);
 
   useEffect(() => {
     void fetchProfile({ background: true });
@@ -584,7 +666,9 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
           profileRing: profile.user.profileRing ?? (isOwner ? (authUser as { profileRing?: string })?.profileRing : undefined),
         }}
         stats={profile.stats}
+        viewerContext={profile.viewerContext}
         isOwner={!!isOwner}
+        onViewerContextChange={handleViewerContextChange}
         onEditProfile={() => setEditModalOpen(true)}
         onEditAvatar={() => setAvatarModalOpen(true)}
         onEditBanner={() => setBannerModalOpen(true)}

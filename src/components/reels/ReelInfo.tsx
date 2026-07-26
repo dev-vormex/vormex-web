@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import Link from 'next/link';
+import { ProfileLink } from '@/components/profile/ProfileLink';
 import { Music, MapPin, ChevronDown, ChevronUp, Code, ExternalLink, Loader2 } from 'lucide-react';
 import { Reel } from '@/lib/api/reels';
 import { followUser, unfollowUser } from '@/lib/api/follow';
@@ -88,14 +88,14 @@ export function ReelInfo({ reel, onAudioClick, onHashtagClick, onFollowChange }:
       if (part.startsWith('@')) {
         const username = part.slice(1);
         return (
-          <Link
+          <ProfileLink
             key={index}
-            href={`/profile/${username}`}
+            profileId={username}
             onClick={(e) => e.stopPropagation()}
             className="text-blue-400 font-semibold hover:underline"
           >
             {part}
-          </Link>
+          </ProfileLink>
         );
       }
       return renderHashtags(part);
@@ -105,8 +105,8 @@ export function ReelInfo({ reel, onAudioClick, onHashtagClick, onFollowChange }:
   return (
     <div className="flex flex-col gap-3 max-w-[calc(100%-80px)]">
       <div className="flex items-center gap-3">
-        <Link
-          href={`/profile/${reel.author.id}`}
+        <ProfileLink
+          profileId={reel.author.id}
           onClick={(e) => e.stopPropagation()}
           className="flex items-center gap-3 flex-1 min-w-0"
         >
@@ -127,7 +127,7 @@ export function ReelInfo({ reel, onAudioClick, onHashtagClick, onFollowChange }:
               </span>
             )}
           </div>
-        </Link>
+        </ProfileLink>
         {!isOwnReel && (
           <button
             type="button"

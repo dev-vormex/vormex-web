@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, use, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
+import { ProfileLink } from '@/components/profile/ProfileLink';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronLeft,
@@ -15,7 +15,7 @@ import {
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { getUserConnections, type Connection } from '@/lib/api/connections';
 import { getFollowers, getFollowing, type FollowWithUser } from '@/lib/api/follow';
-import { getProfile } from '@/lib/api/profile';
+import { getCoreProfile } from '@/lib/api/profile';
 import { cn } from '@/lib/utils';
 
 type Tab = 'connections' | 'followers' | 'following';
@@ -44,7 +44,7 @@ function UserNetworkPageInner({ userId }: { userId: string }) {
   useEffect(() => {
     const fetchUserInfo = async () => {
       try {
-        const profile = await getProfile(userId);
+        const profile = await getCoreProfile(userId);
         setUserInfo({
           id: profile.user.id,
           name: profile.user.name,
@@ -295,8 +295,8 @@ interface UserCardProps {
 
 function UserCard({ user, subtitle }: UserCardProps) {
   return (
-    <Link
-      href={`/profile/${user.id}`}
+    <ProfileLink
+      profileId={user.id}
       className="flex items-center gap-3 p-4 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
     >
       {/* Avatar */}
@@ -333,7 +333,7 @@ function UserCard({ user, subtitle }: UserCardProps) {
           </p>
         )}
       </div>
-    </Link>
+    </ProfileLink>
   );
 }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
+import { ProfileLink } from '@/components/profile/ProfileLink';
 import { formatDistanceToNow } from 'date-fns';
 import { checkUserStatus, getSocket, initializeSocket } from '@/lib/socket';
 import ReportModal from '@/components/reports/ReportModal';
@@ -129,7 +129,7 @@ export default function ChatHeader({ user, conversationId, onBack, onInfo }: Cha
       )}
 
       {/* Avatar */}
-      <Link href={`/profile/${user.username}`} className="relative flex-shrink-0">
+      <ProfileLink profileId={user.username} className="relative flex-shrink-0">
         <UserAvatar
           imageSrc={user.profileImage}
           name={user.name}
@@ -139,12 +139,12 @@ export default function ChatHeader({ user, conversationId, onBack, onInfo }: Cha
         {isOnline && (
           <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full ring-2 ring-white dark:ring-neutral-900"></div>
         )}
-      </Link>
+      </ProfileLink>
 
       {/* User info */}
       <div className="flex-1 min-w-0">
-        <Link
-          href={`/profile/${user.username}`}
+        <ProfileLink
+          profileId={user.username}
           className="flex items-center gap-1.5 text-sm font-semibold text-gray-900 dark:text-white hover:underline"
         >
           <span className="truncate">{user.name}</span>
@@ -153,7 +153,7 @@ export default function ChatHeader({ user, conversationId, onBack, onInfo }: Cha
             isPremium={user.isPremium}
             size="small"
           />
-        </Link>
+        </ProfileLink>
         <p className="text-xs text-gray-500 dark:text-neutral-400">
           {isOnline ? (
             <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400 font-medium">

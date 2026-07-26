@@ -10,8 +10,16 @@ function formatRetryAfter(seconds: number): string {
   return `${minutes} minute${minutes === 1 ? '' : 's'}`;
 }
 
+export function isApiTimeoutError(error: unknown): boolean {
+  return error instanceof AxiosError &&
+    (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT');
+}
+
 export function handleApiError(error: unknown): string {
   if (error instanceof AxiosError) {
+    if (isApiTimeoutError(error)) {
+      return 'Request timed out. Please try again.';
+    }
     const apiError = error.response?.data as ApiError | undefined;
     if (apiError?.error) {
       if (apiError.retryAfterSeconds && apiError.retryAfterSeconds > 0) {

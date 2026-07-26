@@ -28,8 +28,20 @@ export interface ProfileUser {
   isPremium?: boolean;
   interests: string[];
   profileRing?: string | null;
+  profileTheme?: string | null;
+  visitLoaderGiftId?: string | null;
+  canAccessProfileCustomization?: boolean;
   hasClaimedWelcomeGift?: boolean;
   createdAt: string;
+}
+
+export interface ProfileViewerContext {
+  connectionStatus?: string;
+  connectionId?: string | null;
+  direction?: string | null;
+  isFollowing?: boolean;
+  isFollowedBy?: boolean;
+  isProfileSaved?: boolean;
 }
 
 export interface SocialUrl {
@@ -263,6 +275,13 @@ export interface FullProfileResponse {
   projects: Project[];
   certificates: Certificate[];
   achievements: Achievement[];
+  viewerContext?: ProfileViewerContext;
+}
+
+export interface CoreProfileResponse {
+  user: ProfileUser;
+  stats: ProfileStats;
+  viewerContext?: ProfileViewerContext;
 }
 
 export interface ActivityYearsResponse {

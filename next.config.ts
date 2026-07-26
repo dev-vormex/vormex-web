@@ -1,11 +1,17 @@
 import type { NextConfig } from "next";
 
-const backendUrl =
-  process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/+$/, '') ||
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, '') ||
-  (process.env.NODE_ENV === 'production'
-    ? 'https://vormex-backend.onrender.com'
-    : 'http://localhost:5000');
+export function resolveBackendUrl(env: Partial<NodeJS.ProcessEnv> = process.env): string {
+  return (
+    env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/+$/, '') ||
+    env.BACKEND_URL?.replace(/\/+$/, '') ||
+    env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, '') ||
+    (env.NODE_ENV === 'production'
+      ? 'https://vormex-backend.onrender.com'
+      : 'http://localhost:5000')
+  );
+}
+
+const backendUrl = resolveBackendUrl();
 
 const nextConfig: NextConfig = {
   /* config options here */

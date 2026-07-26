@@ -32,23 +32,39 @@ import {
 import { Button } from '@/components/ui/Button';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
-import { getConnectionStatus, sendConnectionRequest, cancelConnectionRequest, removeConnection, acceptConnectionRequest } from '@/lib/api/connections';
-import { followUser, unfollowUser, getFollowStatus, getMutualInfo, type MutualInfo } from '@/lib/api/follow';
+import { sendConnectionRequest, cancelConnectionRequest, removeConnection, acceptConnectionRequest } from '@/lib/api/connections';
+import { followUser, unfollowUser, getMutualInfo, type MutualInfo } from '@/lib/api/follow';
 import { getOrCreateConversation } from '@/lib/api/chat';
 import { ReportModal } from '@/components/ui/ReportModal';
 import { BlockUserModal } from '@/components/ui/BlockUserModal';
 import ConnectionSentToast from '@/components/engagement/ConnectionSentToast';
-import type { ProfileUser, ProfileStats } from '@/types/profile';
+import type { ProfileUser, ProfileStats, ProfileViewerContext } from '@/types/profile';
 import { formatLocation } from '@/lib/utils/profileLocation';
 import { resolveMediaUrl } from '@/lib/utils/media';
 
 interface ProfileHeaderProps {
   user: ProfileUser;
   stats: ProfileStats;
+  viewerContext?: ProfileViewerContext;
   isOwner: boolean;
   onEditProfile?: () => void;
   onEditBanner?: () => void;
   onEditAvatar?: () => void;
+  onViewerContextChange?: (
+    patch: Partial<ProfileViewerContext>,
+    followersDelta?: number
+  ) => void;
+}
+
+type ConnectionStatus = 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'blocked';
+
+function normalizeConnectionStatus(value: string | null | undefined): ConnectionStatus {
+  return value === 'pending_sent' ||
+    value === 'pending_received' ||
+    value === 'connected' ||
+    value === 'blocked'
+    ? value
+    : 'none';
 }
 
 function ProfileCoverImage({ imageSrc }: { imageSrc?: string | null }) {
@@ -73,21 +89,33 @@ function ProfileCoverImage({ imageSrc }: { imageSrc?: string | null }) {
 export function ProfileHeader({
   user,
   stats,
+  viewerContext,
   isOwner,
   onEditProfile,
   onEditBanner,
   onEditAvatar,
+  onViewerContextChange,
 }: ProfileHeaderProps) {
   const router = useRouter();
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [copied, setCopied] = useState(false);
   const actionMenuRef = useRef<HTMLDivElement>(null);
+  const mutualSectionRef = useRef<HTMLDivElement>(null);
+  const mutualRequestedRef = useRef(false);
 
   // Connection & Follow state
-  const [connectionStatus, setConnectionStatus] = useState<'none' | 'pending_sent' | 'pending_received' | 'connected' | 'blocked'>('none');
-  const [connectionId, setConnectionId] = useState<string | null>(null);
-  const [isFollowing, setIsFollowing] = useState(false);
-  const [isFollowedBy, setIsFollowedBy] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(
+    () => normalizeConnectionStatus(viewerContext?.connectionStatus)
+  );
+  const [connectionId, setConnectionId] = useState<string | null>(
+    () => viewerContext?.connectionId || null
+  );
+  const [isFollowing, setIsFollowing] = useState(
+    () => Boolean(viewerContext?.isFollowing)
+  );
+  const [isFollowedBy, setIsFollowedBy] = useState(
+    () => Boolean(viewerContext?.isFollowedBy)
+  );
   const [mutualInfo, setMutualInfo] = useState<MutualInfo | null>(null);
   const [loadingConnection, setLoadingConnection] = useState(false);
   const [loadingFollow, setLoadingFollow] = useState(false);
@@ -116,45 +144,57 @@ export function ProfileHeader({
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  const fetchRelationshipStatus = useCallback(async () => {
-    try {
-      // Use allSettled so one failing API (e.g. DB unreachable) doesn't break the whole profile
-      const [connResult, followResult, mutualResult] = await Promise.allSettled([
-        getConnectionStatus(user.id),
-        getFollowStatus(user.id),
-        getMutualInfo(user.id),
-      ]);
+  useEffect(() => {
+    setConnectionStatus(normalizeConnectionStatus(viewerContext?.connectionStatus));
+    setConnectionId(viewerContext?.connectionId || null);
+    setIsFollowing(Boolean(viewerContext?.isFollowing));
+    setIsFollowedBy(Boolean(viewerContext?.isFollowedBy));
+  }, [
+    user.id,
+    viewerContext?.connectionId,
+    viewerContext?.connectionStatus,
+    viewerContext?.isFollowedBy,
+    viewerContext?.isFollowing,
+  ]);
 
-      if (connResult.status === 'fulfilled') {
-        setConnectionStatus(connResult.value.status);
-        setConnectionId(connResult.value.connectionId || null);
-      } else {
-        console.warn('Failed to fetch connection status:', connResult.reason);
-      }
-
-      if (followResult.status === 'fulfilled') {
-        setIsFollowing(followResult.value.isFollowing);
-        setIsFollowedBy(followResult.value.isFollowedBy);
-      } else {
-        console.warn('Failed to fetch follow status:', followResult.reason);
-      }
-
-      if (mutualResult.status === 'fulfilled') {
-        setMutualInfo(mutualResult.value);
-      } else {
-        console.warn('Failed to fetch mutual info:', mutualResult.reason);
-      }
-    } catch (error) {
-      console.error('Failed to fetch relationship status:', error);
-    }
+  useEffect(() => {
+    setMutualInfo(null);
+    mutualRequestedRef.current = false;
   }, [user.id]);
 
-  // Fetch connection and follow status on mount
-  useEffect(() => {
-    if (!isOwner) {
-      fetchRelationshipStatus();
+  const fetchMutualRelationship = useCallback(async () => {
+    if (mutualRequestedRef.current || isOwner) {
+      return;
     }
-  }, [fetchRelationshipStatus, isOwner]);
+    mutualRequestedRef.current = true;
+    try {
+      setMutualInfo(await getMutualInfo(user.id));
+    } catch (error) {
+      mutualRequestedRef.current = false;
+      console.warn('Failed to fetch mutual profile context:', error);
+    }
+  }, [isOwner, user.id]);
+
+  // Mutual lists are lower-priority. Load them only when their section nears
+  // the viewport; connection/follow controls already came from core profile.
+  useEffect(() => {
+    const element = mutualSectionRef.current;
+    if (!element || isOwner) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries.some(entry => entry.isIntersecting)) {
+          void fetchMutualRelationship();
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '300px 0px' }
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [fetchMutualRelationship, isOwner]);
 
   // Handle connection request
   const handleConnect = async () => {
@@ -163,6 +203,11 @@ export function ProfileHeader({
       const result = await sendConnectionRequest(user.id);
       setConnectionStatus('pending_sent');
       setConnectionId(result.connection.id);
+      onViewerContextChange?.({
+        connectionStatus: 'pending_sent',
+        connectionId: result.connection.id,
+        direction: 'sent',
+      });
       setShowToast(true);
     } catch (error) {
       console.error('Failed to send connection request:', error);
@@ -179,6 +224,11 @@ export function ProfileHeader({
       await cancelConnectionRequest(connectionId);
       setConnectionStatus('none');
       setConnectionId(null);
+      onViewerContextChange?.({
+        connectionStatus: 'none',
+        connectionId: null,
+        direction: null,
+      });
       setShowConnectMenu(false);
     } catch (error) {
       console.error('Failed to cancel request:', error);
@@ -195,6 +245,11 @@ export function ProfileHeader({
       await removeConnection(connectionId);
       setConnectionStatus('none');
       setConnectionId(null);
+      onViewerContextChange?.({
+        connectionStatus: 'none',
+        connectionId: null,
+        direction: null,
+      });
       setShowConnectMenu(false);
     } catch (error) {
       console.error('Failed to remove connection:', error);
@@ -210,6 +265,11 @@ export function ProfileHeader({
       setLoadingConnection(true);
       await acceptConnectionRequest(connectionId);
       setConnectionStatus('connected');
+      onViewerContextChange?.({
+        connectionStatus: 'connected',
+        connectionId,
+        direction: null,
+      });
     } catch (error) {
       console.error('Failed to accept request:', error);
     } finally {
@@ -224,9 +284,11 @@ export function ProfileHeader({
       if (isFollowing) {
         await unfollowUser(user.id);
         setIsFollowing(false);
+        onViewerContextChange?.({ isFollowing: false }, -1);
       } else {
         await followUser(user.id);
         setIsFollowing(true);
+        onViewerContextChange?.({ isFollowing: true }, 1);
       }
     } catch (error) {
       console.error('Failed to toggle follow:', error);
@@ -785,6 +847,7 @@ export function ProfileHeader({
               {/* ═══════════════════════════════════════════════════════════════════════
                   MUTUAL CONNECTIONS & FOLLOWERS - LinkedIn style
               ═══════════════════════════════════════════════════════════════════════ */}
+              {!isOwner && <div ref={mutualSectionRef} className="h-px" aria-hidden="true" />}
               {!isOwner && mutualInfo && (mutualInfo.mutualConnectionsCount > 0 || mutualInfo.mutualFollowersCount > 0) && (
                 <div className="mt-6 pt-6 border-t border-gray-100 dark:border-neutral-800">
                   {/* Mutual Connections */}

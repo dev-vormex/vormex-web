@@ -34,6 +34,7 @@ export const queryKeys = {
   findPeopleInitial: () => ['find-people-initial'] as const,
   peopleFilterOptions: () => ['people-filter-options'] as const,
   profile: (userId: string) => ['profile', userId] as const,
+  profileCore: (userId: string) => ['profile-core', userId] as const,
   profileActivityYears: (userId: string) =>
     ['profile-activity-years', userId] as const,
   profileActivityHeatmap: (userId: string, year?: number | null) =>

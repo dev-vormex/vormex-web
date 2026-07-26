@@ -8,6 +8,7 @@ import { matchingAPI, type SmartMatch } from '@/lib/api/matching';
 import { FIND_PEOPLE_STALE_TIME, queryKeys } from '@/lib/queryKeys';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
+import { handleApiError } from '@/lib/utils/errorHandler';
 
 const GOAL_LABELS: Record<string, string> = {
   learn_coding: 'Coding & Tech',
@@ -36,6 +37,9 @@ export function SmartMatchesTab() {
   const {
     data,
     isLoading: loading,
+    isError,
+    error,
+    refetch,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -94,6 +98,21 @@ export function SmartMatchesTab() {
             </div>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-12 text-center dark:border-red-900/60 dark:bg-red-950/20">
+        <p className="text-sm text-red-600 dark:text-red-400">{handleApiError(error)}</p>
+        <button
+          type="button"
+          onClick={() => void refetch()}
+          className="mt-4 rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+        >
+          Retry
+        </button>
       </div>
     );
   }
