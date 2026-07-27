@@ -17,6 +17,8 @@ import type {
 // Feed Endpoints
 // ============================================
 
+const FEED_REQUEST_TIMEOUT_MS = 30_000;
+
 /**
  * Get home feed with cursor-based pagination
  * @param cursor - Optional cursor for pagination
@@ -31,7 +33,12 @@ export async function getFeed(
   if (cursor) params.cursor = cursor;
   if (adOptions?.adSessionId) params.adSessionId = adOptions.adSessionId;
   if (typeof adOptions?.adItemOffset === 'number') params.adItemOffset = adOptions.adItemOffset;
-  return apiClient.get('/posts/feed', { params });
+  return apiClient.get('/posts/feed', {
+    params,
+    // A cold production ranking snapshot can outlive the global interactive
+    // timeout. Cached posts paint immediately while this request revalidates.
+    timeout: FEED_REQUEST_TIMEOUT_MS,
+  });
 }
 
 /**

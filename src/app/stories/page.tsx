@@ -26,6 +26,7 @@ import {
   type Story,
   type StoryHighlight,
 } from '@/lib/api/stories';
+import { readCachedStories, writeCachedStories } from '@/lib/stories/browserCache';
 
 function StoriesPage() {
   const { user } = useAuth();
@@ -43,18 +44,33 @@ function StoriesPage() {
 
   const fetchData = useCallback(async () => {
     if (!user) return;
-    
-    try {
+
+    const cachedStories = readCachedStories(user.id);
+    if (cachedStories) {
+      setStoryGroups(cachedStories.value);
+      setLoading(false);
+    } else {
       setLoading(true);
-      const [feedRes, myStoriesRes, highlightsRes] = await Promise.all([
+    }
+
+    try {
+      const [feedResult, myStoriesResult, highlightsResult] = await Promise.allSettled([
         getStoriesFeed(),
         getMyStories(),
         getUserHighlights(user.id),
       ]);
-      
-      setStoryGroups(feedRes?.storyGroups || []);
-      setMyStories(myStoriesRes?.stories || []);
-      setHighlights(highlightsRes?.highlights || []);
+
+      if (feedResult.status === 'fulfilled') {
+        const groups = feedResult.value?.storyGroups || [];
+        setStoryGroups(groups);
+        writeCachedStories(user.id, groups);
+      }
+      if (myStoriesResult.status === 'fulfilled') {
+        setMyStories(myStoriesResult.value?.stories || []);
+      }
+      if (highlightsResult.status === 'fulfilled') {
+        setHighlights(highlightsResult.value?.highlights || []);
+      }
     } catch (error) {
       console.error('Error fetching stories:', error);
     } finally {

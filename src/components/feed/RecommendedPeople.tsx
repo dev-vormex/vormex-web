@@ -1,25 +1,53 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
-import { matchingAPI } from '@/lib/api/matching';
+import { matchingAPI, type SmartMatch } from '@/lib/api/matching';
 import { Zap, ChevronRight } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { useAuth } from '@/lib/auth/useAuth';
+import {
+  DAILY_MODULE_CACHE_TTL_MS,
+  readDailyModule,
+  writeDailyModule,
+} from '@/lib/feed/dailyModulesCache';
+
+function isSmartMatchList(value: unknown): value is SmartMatch[] {
+  return Array.isArray(value) && value.every((match) => (
+    typeof match === 'object' &&
+    match !== null &&
+    typeof (match as SmartMatch).user?.id === 'string'
+  ));
+}
 
 export function RecommendedPeople() {
   const router = useRouter();
+  const { user } = useAuth();
+  const cachedMatches = useMemo(
+    () => readDailyModule(user?.id, 'smart-matches', isSmartMatchList),
+    [user?.id]
+  );
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['smart-matches', 'feed'],
+  const { data, dataUpdatedAt, isLoading } = useQuery({
+    queryKey: ['smart-matches', 'feed', user?.id],
     queryFn: async () => {
       const res = await matchingAPI.getSmartMatches({ type: 'all', limit: 8 });
       return res.matches;
     },
-    staleTime: 5 * 60 * 1000, // 5 min - cached when navigating back
-    gcTime: 10 * 60 * 1000,
+    enabled: Boolean(user?.id),
+    initialData: cachedMatches?.value,
+    initialDataUpdatedAt: cachedMatches?.savedAt,
+    staleTime: DAILY_MODULE_CACHE_TTL_MS,
+    gcTime: DAILY_MODULE_CACHE_TTL_MS,
   });
+
+  useEffect(() => {
+    if (user?.id && data && dataUpdatedAt > (cachedMatches?.savedAt ?? 0)) {
+      writeDailyModule(user.id, 'smart-matches', data, dataUpdatedAt);
+    }
+  }, [cachedMatches?.savedAt, data, dataUpdatedAt, user?.id]);
 
   const matches = data ?? [];
 

@@ -13,6 +13,9 @@ import {
 import type { User, LoginCredentials, RegisterData, AuthResponse } from '@/types/auth';
 import { handleApiError } from '@/lib/utils/errorHandler';
 import { disconnectSocket } from '@/lib/socket';
+import { clearCachedFeed } from '@/lib/feed/browserCache';
+import { clearDailyModules } from '@/lib/feed/dailyModulesCache';
+import { clearCachedStories } from '@/lib/stories/browserCache';
 
 const AUTH_PRESENT_COOKIE = 'vx_auth_present';
 const CSRF_COOKIE = 'vx_csrf';
@@ -43,8 +46,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const hasSession = Cookies.get(AUTH_PRESENT_COOKIE) === 'true';
         if (hasSession) {
           setTokenState('cookie');
-          const pendingUser = getPendingUser();
-          const cachedUser = pendingUser ?? readCachedUser();
+            const pendingUser = getPendingUser();
+            const cachedUser = (pendingUser ?? readCachedUser()) as User | null;
           if (cachedUser) {
             // Render immediately from the last-known user and revalidate the
             // session in the background instead of blocking first paint on
@@ -64,6 +67,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               ? (error as { response?: { status?: number } }).response?.status
               : undefined;
             if (status === 401 || status === 404 || status === 403) {
+              clearCachedFeed(cachedUser?.id);
+              clearDailyModules(cachedUser?.id);
+              clearCachedStories(cachedUser?.id);
               Cookies.remove('authToken');
               Cookies.remove(AUTH_PRESENT_COOKIE);
               Cookies.remove(CSRF_COOKIE);
@@ -158,6 +164,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     disconnectSocket();
+    clearCachedFeed(user?.id);
+    clearDailyModules(user?.id);
+    clearCachedStories(user?.id);
     authAPI.logout().catch(() => undefined);
     Cookies.remove('authToken');
     Cookies.remove(AUTH_PRESENT_COOKIE);
@@ -167,7 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearCachedUser();
     setUser(null);
     setTokenState(null);
-  }, []);
+  }, [user?.id]);
 
   const setAuth = useCallback((response: AuthResponse) => {
     disconnectSocket();

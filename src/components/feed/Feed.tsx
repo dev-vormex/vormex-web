@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -51,8 +51,9 @@ import { ManagedAdCard } from '@/components/feed/ManagedAdCard';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import type { FeedResponse, Post, PollOption } from '@/types/post';
 import { FEED_STALE_TIME, queryKeys } from '@/lib/queryKeys';
+import { readCachedFeed, writeCachedFeed } from '@/lib/feed/browserCache';
 
-type FeedCache = InfiniteData<FeedResponse, string | undefined>;
+type FeedCache = InfiniteData<FeedResponse, unknown>;
 
 function createAdSessionId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -75,6 +76,7 @@ export function Feed() {
   const { activeCards, dismissCard } = useVariableRewards(user?.id);
   const [adSessionId] = useState(createAdSessionId);
   const adItemOffsetRef = useRef(0);
+  const cachedFeed = useMemo(() => readCachedFeed(user?.id), [user?.id]);
 
   // Use React Query for feed - cached when navigating back from profile (no reload)
   const {
@@ -85,11 +87,13 @@ export function Feed() {
     hasNextPage: hasMore,
     error: queryError,
     refetch: retryFeed,
+    dataUpdatedAt,
   } = useInfiniteQuery({
     queryKey: queryKeys.feed(user?.id),
     queryFn: async ({ pageParam }) => {
-      const adItemOffset = pageParam ? adItemOffsetRef.current : 0;
-      const res = await getFeed(pageParam ?? undefined, 20, {
+      const cursor = typeof pageParam === 'string' ? pageParam : undefined;
+      const adItemOffset = cursor ? adItemOffsetRef.current : 0;
+      const res = await getFeed(cursor, 20, {
         adSessionId,
         adItemOffset,
       });
@@ -99,12 +103,33 @@ export function Feed() {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     staleTime: FEED_STALE_TIME,
+    gcTime: 24 * 60 * 60 * 1000,
+    initialData: cachedFeed?.value,
+    initialDataUpdatedAt: cachedFeed?.savedAt,
+    refetchOnMount: true,
+    retry: (failureCount, requestError) =>
+      failureCount < 2 &&
+      (requestError as { response?: { status?: number } })?.response?.status !== 401,
+    retryDelay: (attemptIndex) => Math.min(500 * 2 ** attemptIndex, 2_000),
     enabled: !authLoading && !!user,
   });
 
   const posts = data?.pages.flatMap((p) => p.posts) ?? [];
   const adPlacements = data?.pages.flatMap((p) => p.adPlacements || []) ?? [];
-  const error = queryError ? (queryError as Error).message : null;
+  const error = queryError && posts.length === 0 ? (queryError as Error).message : null;
+
+  useEffect(() => {
+    if (!user?.id || !data || dataUpdatedAt <= (cachedFeed?.savedAt || 0)) return;
+    writeCachedFeed(user.id, data, dataUpdatedAt);
+  }, [cachedFeed?.savedAt, data, dataUpdatedAt, user?.id]);
+
+  useEffect(() => {
+    if (!cachedFeed || adItemOffsetRef.current > 0) return;
+    adItemOffsetRef.current = cachedFeed.value.pages.reduce(
+      (count, page) => count + page.posts.length,
+      0
+    );
+  }, [cachedFeed]);
   
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);

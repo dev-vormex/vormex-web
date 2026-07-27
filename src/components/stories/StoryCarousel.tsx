@@ -29,7 +29,7 @@ export function StoryCarousel({ onOpenStory, onCreateStory }: StoryCarouselProps
   const cachedStories = useMemo(() => readCachedStories(user?.id), [user?.id]);
 
   // Cached with React Query - no reload when navigating back to home
-  const { data, isLoading: queryLoading } = useQuery({
+  const { data, isLoading: queryLoading, dataUpdatedAt } = useQuery({
     queryKey: ['stories', user?.id],
     queryFn: async () => {
       const response = await getStoriesFeed();
@@ -38,7 +38,7 @@ export function StoryCarousel({ onOpenStory, onCreateStory }: StoryCarouselProps
       return groups;
     },
     staleTime: 5 * 60 * 1000, // 5 min - instant back navigation
-    gcTime: 10 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
     initialData: cachedStories?.value,
     initialDataUpdatedAt: cachedStories?.savedAt,
     enabled: !authLoading && !!user,
@@ -49,6 +49,11 @@ export function StoryCarousel({ onOpenStory, onCreateStory }: StoryCarouselProps
 
   const storyGroups = useMemo(() => data ?? [], [data]);
   const loading = authLoading || (queryLoading && storyGroups.length === 0);
+
+  useEffect(() => {
+    if (!user?.id || !data || dataUpdatedAt <= (cachedStories?.savedAt || 0)) return;
+    writeCachedStories(user.id, data);
+  }, [cachedStories?.savedAt, data, dataUpdatedAt, user?.id]);
 
   // Listen for real-time story updates.
   // initializeSocket() (not getSocket()) so this works even when this child

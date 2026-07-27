@@ -1,21 +1,34 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserPlus, ChevronRight, ChevronLeft, Check, Loader2, Sparkles, MessageCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { getDailyMatches, type DailyMatch } from '@/lib/api/engagement';
+import { getDailyMatches, type DailyMatch, type DailyMatchesResponse } from '@/lib/api/engagement';
 import { sendConnectionRequest } from '@/lib/api/connections';
 import Link from 'next/link';
 import { TodayMatchesSkeleton } from './TodayMatchesSkeleton';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
+import { useAuth } from '@/lib/auth/useAuth';
+import {
+  DAILY_MODULE_CACHE_TTL_MS,
+  readDailyModule,
+  writeDailyModule,
+} from '@/lib/feed/dailyModulesCache';
+
+function isDailyMatchesResponse(value: unknown): value is DailyMatchesResponse {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<DailyMatchesResponse>;
+  return Array.isArray(candidate.matches) && typeof candidate.matchCount === 'number';
+}
 
 /**
  * TodayMatchesSection - Horizontal scrollable match cards at top of feed
  * Like Android's TodayMatchesSection — prominent, above posts
  */
 export default function TodayMatchesSection() {
+  const { user } = useAuth();
   const [connectingIds, setConnectingIds] = useState<Set<string>>(new Set());
   const [connectedIds, setConnectedIds] = useState<Set<string>>(new Set());
   const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
@@ -23,12 +36,29 @@ export default function TodayMatchesSection() {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  const { data: matchData, isLoading } = useQuery({
-    queryKey: ['daily-matches'],
+  const cachedMatches = useMemo(
+    () => readDailyModule(user?.id, 'daily-matches', isDailyMatchesResponse),
+    [user?.id]
+  );
+  const { data: matchData, dataUpdatedAt, isLoading } = useQuery({
+    queryKey: ['daily-matches', user?.id],
     queryFn: getDailyMatches,
-    staleTime: 5 * 60 * 1000, // 5 min - cached when navigating back
-    gcTime: 10 * 60 * 1000,
+    enabled: Boolean(user?.id),
+    initialData: cachedMatches?.value,
+    initialDataUpdatedAt: cachedMatches?.savedAt,
+    staleTime: DAILY_MODULE_CACHE_TTL_MS,
+    gcTime: DAILY_MODULE_CACHE_TTL_MS,
   });
+
+  useEffect(() => {
+    if (
+      user?.id &&
+      matchData &&
+      dataUpdatedAt > (cachedMatches?.savedAt ?? 0)
+    ) {
+      writeDailyModule(user.id, 'daily-matches', matchData, dataUpdatedAt);
+    }
+  }, [cachedMatches?.savedAt, dataUpdatedAt, matchData, user?.id]);
 
   // Track scroll state for arrow visibility
   useEffect(() => {
