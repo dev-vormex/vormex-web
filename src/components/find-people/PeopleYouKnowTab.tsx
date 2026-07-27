@@ -24,8 +24,10 @@ import {
   type PeopleYouKnowImportInput,
   type PeopleYouKnowInvite,
   type PeopleYouKnowResponse,
+  type PersonRelationship,
 } from '@/lib/api/people';
 import { getShareLinks } from '@/lib/api/referrals';
+import { withPersonRelationship } from '@/lib/findPeoplePolicy';
 
 type ContactPickerContact = {
   name?: string[];
@@ -51,6 +53,15 @@ const EMPTY_RESPONSE: PeopleYouKnowResponse = {
     inviteCount: 0,
   },
 };
+
+type PeopleDiscoveryError = {
+  name?: string;
+  response?: { data?: { error?: string } };
+};
+
+function asPeopleDiscoveryError(error: unknown): PeopleDiscoveryError {
+  return typeof error === 'object' && error !== null ? error as PeopleDiscoveryError : {};
+}
 
 const CSV_NAME_HEADERS = new Set([
   'name',
@@ -161,14 +172,14 @@ export function PeopleYouKnowTab() {
     return typeof navigatorWithContacts.contacts?.select === 'function';
   }, []);
 
-  const handleConnectionChange = (personId: string, nextStatus: string) => {
+  const handleConnectionChange = (personId: string, relationship: PersonRelationship) => {
     queryClient.setQueryData<PeopleYouKnowResponse>(['people-you-know'], (previous) => {
       if (!previous) return previous;
       return {
         ...previous,
         matched: previous.matched.map((person) =>
           person.id === personId
-            ? { ...person, connectionStatus: nextStatus as typeof person.connectionStatus }
+            ? withPersonRelationship(person, relationship)
             : person
         ),
       };
@@ -190,8 +201,9 @@ export function PeopleYouKnowTab() {
     try {
       const response = await discoverPeopleYouKnow(contacts, source);
       persistDiscoveryResult(response);
-    } catch (discoverError: any) {
-      setError(discoverError?.response?.data?.error || 'We could not find your people right now.');
+    } catch (discoverError: unknown) {
+      const failure = asPeopleDiscoveryError(discoverError);
+      setError(failure.response?.data?.error || 'We could not find your people right now.');
     } finally {
       setIsDiscovering(false);
     }
@@ -231,11 +243,12 @@ export function PeopleYouKnowTab() {
 
       const response = await discoverPeopleYouKnow(contacts, 'picker');
       persistDiscoveryResult(response);
-    } catch (pickerError: any) {
-      if (pickerError?.name === 'AbortError') {
+    } catch (pickerError: unknown) {
+      const failure = asPeopleDiscoveryError(pickerError);
+      if (failure.name === 'AbortError') {
         return;
       }
-      setError(pickerError?.response?.data?.error || 'We could not find your people right now.');
+      setError(failure.response?.data?.error || 'We could not find your people right now.');
     } finally {
       setIsDiscovering(false);
     }
@@ -269,8 +282,9 @@ export function PeopleYouKnowTab() {
       queryClient.setQueryData(['people-you-know'], EMPTY_RESPONSE);
       setJustFoundCount(null);
       setError(null);
-    } catch (clearError: any) {
-      setError(clearError?.response?.data?.error || 'We could not clear this list right now.');
+    } catch (clearError: unknown) {
+      const failure = asPeopleDiscoveryError(clearError);
+      setError(failure.response?.data?.error || 'We could not clear this list right now.');
     } finally {
       setIsClearing(false);
     }
@@ -310,11 +324,12 @@ export function PeopleYouKnowTab() {
           ),
         };
       });
-    } catch (inviteError: any) {
-      if (inviteError?.name === 'AbortError') {
+    } catch (inviteError: unknown) {
+      const failure = asPeopleDiscoveryError(inviteError);
+      if (failure.name === 'AbortError') {
         return;
       }
-      setError(inviteError?.response?.data?.error || 'We could not share that invite right now.');
+      setError(failure.response?.data?.error || 'We could not share that invite right now.');
     } finally {
       setProcessingInviteId(null);
     }
@@ -500,7 +515,7 @@ export function PeopleYouKnowTab() {
       </AnimatePresence>
 
       {isLoading && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, index) => (
             <PersonCardSkeleton key={index} />
           ))}
@@ -523,7 +538,7 @@ export function PeopleYouKnowTab() {
             </span>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {data.matched.slice(0, visibleCount).map((person) => (
               <PersonCard
                 key={person.id}

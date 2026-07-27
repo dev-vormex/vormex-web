@@ -4,6 +4,17 @@ import apiClient from './client';
 // TYPES
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+export type PersonRelationshipStatus =
+  | 'none'
+  | 'pending_sent'
+  | 'pending_received'
+  | 'connected';
+
+export interface PersonRelationship {
+  status: PersonRelationshipStatus;
+  connectionId?: string | null;
+}
+
 export interface PersonCard {
   id: string;
   username: string;
@@ -21,7 +32,9 @@ export interface PersonCard {
   isVerified?: boolean;
   profileBadgeStyle?: string | null;
   isPremium?: boolean;
-  connectionStatus: 'none' | 'pending_sent' | 'pending_received' | 'connected';
+  connectionStatus: PersonRelationshipStatus;
+  connectionId?: string | null;
+  relationship?: PersonRelationship;
   mutualConnections?: number;
 }
 
@@ -109,7 +122,8 @@ export interface PeopleYouKnowImportInput {
  */
 export async function getPeople(
   filters?: PeopleFilters,
-  pagination?: PeoplePagination
+  pagination?: PeoplePagination,
+  signal?: AbortSignal
 ): Promise<PeopleResponse> {
   const params = new URLSearchParams();
   
@@ -128,7 +142,19 @@ export async function getPeople(
   if (pagination?.limit) params.append('limit', pagination.limit.toString());
   if (pagination?.cursor) params.append('cursor', pagination.cursor);
   
-  return apiClient.get(`/people?${params.toString()}`);
+  return apiClient.get(`/people?${params.toString()}`, { signal });
+}
+
+/** Indexed, relevance-ranked global search. Queries are normalized server-side. */
+export async function searchPeople(
+  query: string,
+  pagination?: Pick<PeoplePagination, 'cursor' | 'limit'>,
+  signal?: AbortSignal
+): Promise<PeopleResponse> {
+  const params = new URLSearchParams({ q: query });
+  if (pagination?.limit) params.set('limit', pagination.limit.toString());
+  if (pagination?.cursor) params.set('cursor', pagination.cursor);
+  return apiClient.get(`/people/search?${params.toString()}`, { signal });
 }
 
 /**
@@ -206,7 +232,9 @@ export interface SearchUser {
  * Quick search users by name or username
  */
 export async function searchUsers(query: string, limit: number = 10): Promise<SearchUser[]> {
-  const response = await getPeople({ search: query }, { limit });
+  const normalizedQuery = query.trim();
+  if (normalizedQuery.length < 2) return [];
+  const response = await searchPeople(normalizedQuery, { limit });
   return response.people.map(p => ({
     id: p.id,
     username: p.username,

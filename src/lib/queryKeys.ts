@@ -32,6 +32,8 @@ export const queryKeys = {
   smartMatches: (type: string = 'all') => ['smart-matches', type] as const,
   peopleFromCollege: () => ['people-from-college'] as const,
   findPeopleInitial: () => ['find-people-initial'] as const,
+  peopleSearch: (viewerId: string, query: string, cursor: string | null = null) =>
+    ['people-search', viewerId, query, cursor ?? 'first'] as const,
   peopleFilterOptions: () => ['people-filter-options'] as const,
   profile: (userId: string) => ['profile', userId] as const,
   profileCore: (userId: string) => ['profile-core', userId] as const,

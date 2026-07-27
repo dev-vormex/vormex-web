@@ -44,25 +44,64 @@ import {
 } from './FindPeopleTabIcons';
 import {
   getPeople,
+  searchPeople,
   getSuggestions,
   getPeopleFromSameCollege,
   getFilterOptions,
   type PersonCard as PersonCardType,
   type PeopleFilters,
+  type PeopleResponse,
   type FilterOptions,
+  type PersonRelationship,
 } from '@/lib/api/people';
 import { useAuth } from '@/lib/auth/useAuth';
 import { FIND_PEOPLE_STALE_TIME, queryKeys } from '@/lib/queryKeys';
 import { handleApiError, isApiTimeoutError } from '@/lib/utils/errorHandler';
+import {
+  BROWSE_PAGE_SIZE,
+  PREFETCH_REMAINING_ITEMS,
+  SEARCH_DEBOUNCE_MS,
+  SEARCH_MIN_CHARACTERS,
+  SEARCH_PAGE_SIZE,
+  decideFindPage,
+  normalizePeopleSearch,
+  withPersonRelationship,
+} from '@/lib/findPeoplePolicy';
+import {
+  readRecentPeopleProfiles,
+  readRecentPeopleSearches,
+  rememberPeopleProfile,
+  rememberPeopleSearch,
+  type RecentPerson,
+} from '@/lib/findPeopleRecent';
+import { SearchPersonRow, SearchPersonRowSkeleton } from './SearchPersonRow';
+import { ProfileLink } from '@/components/profile/ProfileLink';
+import { UserAvatar } from '@/components/ui/UserAvatar';
+import { VerificationBadge } from '@/components/ui/VerificationBadge';
+import type { CoreProfileResponse, FullProfileResponse } from '@/types/profile';
 
 type TabType = 'known' | 'all' | 'smart' | 'suggestions' | 'college' | 'nearby';
 
-const PEOPLE_PAGE_SIZE = 50;
+interface FindPeopleInitialCache {
+  people: PersonCardType[];
+  total: number;
+  hasMore: boolean;
+  nextCursor?: string | null;
+  suggestions: PersonCardType[];
+  suggestionsHasMore?: boolean;
+  colleaguePeople: PersonCardType[];
+  colleagueHasMore?: boolean;
+}
 
 function appendUniquePeople(current: PersonCardType[], incoming: PersonCardType[]): PersonCardType[] {
   const byId = new Map(current.map((person) => [person.id, person]));
   incoming.forEach((person) => byId.set(person.id, person));
   return Array.from(byId.values());
+}
+
+function isCancelledRequest(error: unknown): boolean {
+  const candidate = error as { code?: string; name?: string } | null;
+  return candidate?.code === 'ERR_CANCELED' || candidate?.name === 'CanceledError';
 }
 
 type TabItem = {
@@ -291,21 +330,19 @@ export function FindPeople() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const tabParam = searchParams.get('tab');
-  const cachedInitialData = queryClient.getQueryData<{
-    people: PersonCardType[];
-    total: number;
-    hasMore: boolean;
-    nextCursor?: string | null;
-    suggestions: PersonCardType[];
-    suggestionsHasMore?: boolean;
-    colleaguePeople: PersonCardType[];
-    colleagueHasMore?: boolean;
-  }>(queryKeys.findPeopleInitial());
+  const cachedInitialData = queryClient.getQueryData<FindPeopleInitialCache>(
+    queryKeys.findPeopleInitial()
+  );
   const cachedFilterOptions = queryClient.getQueryData<FilterOptions>(
     queryKeys.peopleFilterOptions()
   );
   const [activeTab, setActiveTab] = useState<TabType>(() => getActiveTabFromParam(tabParam));
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchRetryVersion, setSearchRetryVersion] = useState(0);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [recentProfiles, setRecentProfiles] = useState<RecentPerson[]>([]);
   const [people, setPeople] = useState<PersonCardType[]>(() => cachedInitialData?.people ?? []);
   const [suggestions, setSuggestions] = useState<PersonCardType[]>(
     () => cachedInitialData?.suggestions ?? []
@@ -347,9 +384,16 @@ export function FindPeople() {
   const [selectedYear, setSelectedYear] = useState<number | undefined>(undefined);
   const [selectedLocation, setSelectedLocation] = useState<string>('');
   const [openToOpportunities, setOpenToOpportunities] = useState(false);
-  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, SEARCH_DEBOUNCE_MS);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const searchRequestVersionRef = useRef(0);
+  const requestedCursorsRef = useRef(new Map<string, Set<string>>());
+  const inFlightCursorsRef = useRef(new Set<string>());
+  const normalizedSearchQuery = normalizePeopleSearch(searchQuery);
+  const normalizedDebouncedSearch = normalizePeopleSearch(debouncedSearchQuery);
+  const isSearchMode = activeTab === 'all' && (searchFocused || normalizedSearchQuery.length > 0);
+  const isAuthoritativeSearch = normalizedDebouncedSearch.length >= SEARCH_MIN_CHARACTERS;
 
   // Filters auto-apply — no apply button, LinkedIn-style
   const activeFilters = useMemo<PeopleFilters>(
@@ -362,6 +406,14 @@ export function FindPeople() {
     }),
     [selectedCollege, selectedBranch, selectedYear, selectedLocation, openToOpportunities]
   );
+  const activePeopleRequestKey = useMemo(
+    () => JSON.stringify({
+      viewerId: user?.id ?? 'anonymous',
+      query: isAuthoritativeSearch ? normalizedDebouncedSearch : '',
+      filters: isAuthoritativeSearch ? {} : activeFilters,
+    }),
+    [activeFilters, isAuthoritativeSearch, normalizedDebouncedSearch, user?.id]
+  );
   const hasActiveFilters = Boolean(
     selectedCollege || selectedBranch || selectedYear || selectedLocation || openToOpportunities
   );
@@ -373,11 +425,16 @@ export function FindPeople() {
     openToOpportunities,
   ].filter(Boolean).length;
 
+  useEffect(() => {
+    setRecentSearches(readRecentPeopleSearches(user?.id));
+    setRecentProfiles(readRecentPeopleProfiles(user?.id));
+  }, [user?.id]);
+
   // Cached initial data - instant when navigating back from profile
   const { data: initialData, isLoading: initialLoading, isError: initialError, refetch: refetchInitial } = useQuery({
     queryKey: queryKeys.findPeopleInitial(),
     queryFn: async () => {
-      const allPeopleRes = await getPeople({}, { limit: PEOPLE_PAGE_SIZE });
+      const allPeopleRes = await getPeople({}, { limit: BROWSE_PAGE_SIZE });
       return {
         people: allPeopleRes.people,
         total: allPeopleRes.total,
@@ -397,24 +454,26 @@ export function FindPeople() {
     queryKey: queryKeys.peopleFilterOptions(),
     queryFn: getFilterOptions,
     staleTime: FIND_PEOPLE_STALE_TIME,
+    enabled: activeTab === 'all' && !isSearchMode,
   });
 
   // Sync cached data into local state when available (instant when navigating back)
   useEffect(() => {
-    if (initialData) {
+    if (initialData && !isSearchMode && !hasActiveFilters) {
       setPeople(initialData.people);
       setTotal(initialData.total);
       setHasMore(initialData.hasMore);
       setNextCursor(initialData.nextCursor ?? null);
       setLoading(false);
     }
-  }, [initialData]);
+  }, [hasActiveFilters, initialData, isSearchMode]);
 
   // Show loading when fetching and no cached data; clear loading when query completes (success or error)
   useEffect(() => {
+    if (isSearchMode || hasActiveFilters) return;
     if (!initialData && initialLoading) setLoading(true);
     if (!initialLoading) setLoading(false);
-  }, [initialLoading, initialData]);
+  }, [hasActiveFilters, initialLoading, initialData, isSearchMode]);
 
   useEffect(() => {
     if (filterOptionsData) {
@@ -432,7 +491,7 @@ export function FindPeople() {
     let cancelled = false;
     setSectionLoading(true);
     setSectionError(null);
-    getSuggestions(PEOPLE_PAGE_SIZE, 1)
+    getSuggestions(BROWSE_PAGE_SIZE, 1)
       .then((result) => {
         if (cancelled) return;
         setSuggestions(result.suggestions);
@@ -459,7 +518,7 @@ export function FindPeople() {
     let cancelled = false;
     setSectionLoading(true);
     setSectionError(null);
-    getPeopleFromSameCollege(PEOPLE_PAGE_SIZE, 1)
+    getPeopleFromSameCollege(BROWSE_PAGE_SIZE, 1)
       .then((result) => {
         if (cancelled) return;
         setColleaguePeople(result.people);
@@ -481,48 +540,115 @@ export function FindPeople() {
     };
   }, [activeTab, colleagueLoaded, sectionRetryVersion]);
 
-  // Fetch on search / filter change; fall back to cached initial data when neither is set
+  // Indexed search is authoritative. Every new query aborts the prior request and
+  // stale responses are rejected even if a transport cannot be cancelled promptly.
   useEffect(() => {
+    const requestVersion = ++searchRequestVersionRef.current;
     if (activeTab !== 'all') return;
 
-    if (!debouncedSearchQuery && !hasActiveFilters) {
+    const controller = new AbortController();
+    setPage(1);
+    setSearchError(null);
+    setSectionError(null);
+    requestedCursorsRef.current.set(activePeopleRequestKey, new Set(['__first__']));
+
+    if (isSearchMode && normalizedSearchQuery.length < SEARCH_MIN_CHARACTERS) {
+      setPeople([]);
+      setTotal(0);
+      setHasMore(false);
+      setNextCursor(null);
+      setLoading(false);
+      return () => controller.abort();
+    }
+
+    if (isSearchMode && normalizedSearchQuery !== normalizedDebouncedSearch) {
+      setPeople([]);
+      setTotal(0);
+      setHasMore(false);
+      setNextCursor(null);
+      setLoading(true);
+      return () => controller.abort();
+    }
+
+    if (!isAuthoritativeSearch && !hasActiveFilters) {
       if (initialData) {
         setPeople(initialData.people);
         setTotal(initialData.total);
         setHasMore(initialData.hasMore);
         setNextCursor(initialData.nextCursor ?? null);
-        setPage(1);
       }
-      setLoading(false);
-      return;
+      setLoading(!initialData && initialLoading);
+      return () => controller.abort();
     }
 
-    let cancelled = false;
-    setLoading(true);
-    setPage(1);
+    const viewerId = user?.id ?? 'anonymous';
+    const firstPageQueryKey = isAuthoritativeSearch
+      ? queryKeys.peopleSearch(viewerId, normalizedDebouncedSearch)
+      : ['find-people-filtered', viewerId, activeFilters, 'first'] as const;
+    const cached = queryClient.getQueryData<Awaited<ReturnType<typeof getPeople>>>(firstPageQueryKey);
+    if (cached) {
+      setPeople(cached.people);
+      setTotal(cached.total);
+      setHasMore(cached.hasMore);
+      setNextCursor(cached.nextCursor ?? null);
+    }
+    setLoading(!cached);
 
-    getPeople(
-      { ...activeFilters, search: debouncedSearchQuery || undefined },
-      { limit: PEOPLE_PAGE_SIZE }
-    )
+    void queryClient.fetchQuery({
+      queryKey: firstPageQueryKey,
+      queryFn: () => isAuthoritativeSearch
+        ? searchPeople(normalizedDebouncedSearch, { limit: SEARCH_PAGE_SIZE }, controller.signal)
+        : getPeople(activeFilters, { limit: BROWSE_PAGE_SIZE }, controller.signal),
+      staleTime: isAuthoritativeSearch ? 2 * 60 * 1000 : FIND_PEOPLE_STALE_TIME,
+      retry: (failureCount, error) =>
+        !isCancelledRequest(error) && !isApiTimeoutError(error) && failureCount < 1,
+    })
       .then((result) => {
-        if (cancelled) return;
+        if (controller.signal.aborted || requestVersion !== searchRequestVersionRef.current) return;
+        const decision = decideFindPage({
+          existingUserIds: new Set<string>(),
+          incomingUserIds: result.people.map((person) => person.id),
+          previousCursor: null,
+          serverNextCursor: result.nextCursor,
+          serverHasMore: result.hasMore,
+        });
         setPeople(result.people);
         setTotal(result.total);
-        setHasMore(result.hasMore);
-        setNextCursor(result.nextCursor ?? null);
+        setHasMore(decision.hasMore);
+        setNextCursor(decision.nextCursor);
+        if (isAuthoritativeSearch) {
+          setRecentSearches(rememberPeopleSearch(user?.id, debouncedSearchQuery));
+        }
       })
       .catch((error) => {
-        console.error('Search failed:', error);
+        if (controller.signal.aborted || isCancelledRequest(error)) return;
+        if (requestVersion === searchRequestVersionRef.current) {
+          setSearchError(handleApiError(error));
+        }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted && requestVersion === searchRequestVersionRef.current) {
+          setLoading(false);
+        }
       });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, debouncedSearchQuery, activeFilters, hasActiveFilters, initialData]);
+    return () => controller.abort();
+  }, [
+    activeFilters,
+    activePeopleRequestKey,
+    activeTab,
+    debouncedSearchQuery,
+    hasActiveFilters,
+    initialData,
+    initialLoading,
+    isAuthoritativeSearch,
+    isSearchMode,
+    normalizedDebouncedSearch,
+    normalizedSearchQuery,
+    queryClient,
+    searchRetryVersion,
+    user?.id,
+  ]);
 
   // Clear filters
   const clearFilters = () => {
@@ -535,6 +661,7 @@ export function FindPeople() {
 
   // Load more people
   const loadMore = useCallback(async (force = false) => {
+    const requestVersion = searchRequestVersionRef.current;
     const activeHasMore =
       activeTab === 'all'
         ? hasMore
@@ -544,8 +671,7 @@ export function FindPeople() {
             ? colleagueHasMore
             : false;
     if (loadingMore || (!activeHasMore && !force)) return;
-
-    setLoadingMore(true);
+    let activeCursorRequestKey: string | null = null;
 
     try {
       if (activeTab === 'all') {
@@ -553,47 +679,85 @@ export function FindPeople() {
           setHasMore(false);
           return;
         }
-        const result = await getPeople(
-          { ...activeFilters, search: debouncedSearchQuery || undefined },
-          { cursor: nextCursor, limit: PEOPLE_PAGE_SIZE }
-        );
+        activeCursorRequestKey = `${activePeopleRequestKey}:${nextCursor}`;
+        const requested = requestedCursorsRef.current.get(activePeopleRequestKey) ?? new Set<string>();
+        requestedCursorsRef.current.set(activePeopleRequestKey, requested);
+        if (inFlightCursorsRef.current.has(activeCursorRequestKey)) return;
+        if (!force && requested.has(nextCursor)) return;
+        requested.add(nextCursor);
+        inFlightCursorsRef.current.add(activeCursorRequestKey);
+        setLoadingMore(true);
+
+        const viewerId = user?.id ?? 'anonymous';
+        const pageQueryKey = isAuthoritativeSearch
+          ? queryKeys.peopleSearch(viewerId, normalizedDebouncedSearch, nextCursor)
+          : ['find-people-filtered', viewerId, activeFilters, nextCursor] as const;
+        const result = await queryClient.fetchQuery({
+          queryKey: pageQueryKey,
+          queryFn: () => isAuthoritativeSearch
+            ? searchPeople(normalizedDebouncedSearch, { cursor: nextCursor, limit: SEARCH_PAGE_SIZE })
+            : getPeople(activeFilters, { cursor: nextCursor, limit: BROWSE_PAGE_SIZE }),
+          staleTime: isAuthoritativeSearch ? 2 * 60 * 1000 : FIND_PEOPLE_STALE_TIME,
+          retry: (failureCount, error) =>
+            !isCancelledRequest(error) && !isApiTimeoutError(error) && failureCount < 1,
+        });
+        if (requestVersion !== searchRequestVersionRef.current) return;
+        const decision = decideFindPage({
+          existingUserIds: new Set(people.map((person) => person.id)),
+          incomingUserIds: result.people.map((person) => person.id),
+          previousCursor: nextCursor,
+          serverNextCursor: result.nextCursor,
+          serverHasMore: result.hasMore,
+        });
         setPeople((previous) => appendUniquePeople(previous, result.people));
         setPage((previous) => previous + 1);
-        setHasMore(result.hasMore);
-        setNextCursor(result.nextCursor ?? null);
+        setHasMore(decision.hasMore);
+        setNextCursor(decision.nextCursor);
       } else if (activeTab === 'suggestions') {
+        setLoadingMore(true);
         const nextPage = suggestionsPage + 1;
-        const result = await getSuggestions(PEOPLE_PAGE_SIZE, nextPage);
+        const result = await getSuggestions(BROWSE_PAGE_SIZE, nextPage);
         setSuggestions((previous) => appendUniquePeople(previous, result.suggestions));
         setSuggestionsPage(nextPage);
         setSuggestionsHasMore(Boolean(result.hasMore));
       } else if (activeTab === 'college') {
+        setLoadingMore(true);
         const nextPage = colleaguePage + 1;
-        const result = await getPeopleFromSameCollege(PEOPLE_PAGE_SIZE, nextPage);
+        const result = await getPeopleFromSameCollege(BROWSE_PAGE_SIZE, nextPage);
         setColleaguePeople((previous) => appendUniquePeople(previous, result.people));
         setColleaguePage(nextPage);
         setColleagueHasMore(Boolean(result.hasMore));
       }
     } catch (error) {
+      if (requestVersion !== searchRequestVersionRef.current || isCancelledRequest(error)) return;
       console.error('Failed to load more:', error);
       setSectionError(handleApiError(error));
-      if (activeTab === 'all') setHasMore(false);
+      if (activeTab === 'all') {
+        if (nextCursor) requestedCursorsRef.current.get(activePeopleRequestKey)?.delete(nextCursor);
+        setHasMore(Boolean(nextCursor));
+      }
       if (activeTab === 'suggestions') setSuggestionsHasMore(false);
       if (activeTab === 'college') setColleagueHasMore(false);
     } finally {
+      if (activeCursorRequestKey) inFlightCursorsRef.current.delete(activeCursorRequestKey);
       setLoadingMore(false);
     }
   }, [
     activeTab,
     activeFilters,
+    activePeopleRequestKey,
     colleagueHasMore,
     colleaguePage,
-    debouncedSearchQuery,
     hasMore,
+    isAuthoritativeSearch,
     loadingMore,
     nextCursor,
+    normalizedDebouncedSearch,
+    people,
+    queryClient,
     suggestionsHasMore,
     suggestionsPage,
+    user?.id,
   ]);
 
   // Intersection observer for infinite scroll
@@ -627,24 +791,65 @@ export function FindPeople() {
   }, [activeTab, colleagueHasMore, hasMore, loadMore, loadingMore, suggestionsHasMore]);
 
   // Handle connection status change
-  const handleConnectionChange = (personId: string, newStatus: string) => {
-    const normalizedStatus: PersonCardType['connectionStatus'] =
-      newStatus === 'pending_sent' ||
-      newStatus === 'pending_received' ||
-      newStatus === 'connected'
-        ? newStatus
-        : 'none';
-
-    // Update all lists
+  const handleConnectionChange = useCallback((personId: string, relationship: PersonRelationship) => {
     const updateList = (list: PersonCardType[]) =>
       list.map(p =>
-        p.id === personId ? { ...p, connectionStatus: normalizedStatus } : p
+        p.id === personId ? withPersonRelationship(p, relationship) : p
       );
+    const targetPerson = [people, suggestions, colleaguePeople]
+      .flat()
+      .find((person) => person.id === personId);
 
     setPeople(updateList);
     setSuggestions(updateList);
     setColleaguePeople(updateList);
-  };
+
+    queryClient.setQueriesData<PeopleResponse>({ queryKey: ['people-search'] }, (cached) =>
+      cached ? { ...cached, people: updateList(cached.people) } : cached
+    );
+    queryClient.setQueriesData<PeopleResponse>({ queryKey: ['find-people-filtered'] }, (cached) =>
+      cached ? { ...cached, people: updateList(cached.people) } : cached
+    );
+    queryClient.setQueryData<FindPeopleInitialCache>(queryKeys.findPeopleInitial(), (cached) =>
+      cached ? {
+        ...cached,
+        people: updateList(cached.people),
+        suggestions: updateList(cached.suggestions),
+        colleaguePeople: updateList(cached.colleaguePeople),
+      } : cached
+    );
+
+    const profileAliases = new Set(
+      [personId, targetPerson?.username, targetPerson?.username ? `@${targetPerson.username}` : null]
+        .filter((value): value is string => Boolean(value))
+    );
+    profileAliases.forEach((alias) => {
+      queryClient.setQueryData<CoreProfileResponse>(queryKeys.profileCore(alias), (cached) =>
+        cached ? {
+          ...cached,
+          viewerContext: {
+            ...cached.viewerContext,
+            connectionStatus: relationship.status,
+            connectionId: relationship.connectionId ?? null,
+          },
+        } : cached
+      );
+      queryClient.setQueryData<FullProfileResponse>(queryKeys.profile(alias), (cached) =>
+        cached ? {
+          ...cached,
+          viewerContext: {
+            ...cached.viewerContext,
+            connectionStatus: relationship.status,
+            connectionId: relationship.connectionId ?? null,
+          },
+        } : cached
+      );
+    });
+  }, [colleaguePeople, people, queryClient, suggestions]);
+
+  const handleProfileIntent = useCallback((person: PersonCardType) => {
+    setRecentProfiles(rememberPeopleProfile(user?.id, person));
+  }, [user?.id]);
 
   // Get current display list (dedupe by id to avoid React key errors from API overlap)
   const getDisplayedPeople = () => {
@@ -668,13 +873,21 @@ export function FindPeople() {
     });
   })();
 
-  const isGridTab = activeTab === 'all' || activeTab === 'suggestions' || activeTab === 'college';
+  const isSearchResultsVisible = activeTab === 'all' && isSearchMode;
+  const isSearchDebouncing =
+    normalizedSearchQuery.length >= SEARCH_MIN_CHARACTERS &&
+    normalizedSearchQuery !== normalizedDebouncedSearch;
+  const isGridTab =
+    (activeTab === 'all' && !isSearchMode) ||
+    activeTab === 'suggestions' ||
+    activeTab === 'college';
   const isGridLoading = loading || sectionLoading;
   const activeGridHasMore =
     (activeTab === 'all' && hasMore) ||
     (activeTab === 'suggestions' && suggestionsHasMore) ||
     (activeTab === 'college' && colleagueHasMore);
-  const showSidebar = activeTab === 'all';
+  const showSidebar = activeTab === 'all' && !isSearchMode;
+  const prefetchIndex = Math.max(0, displayedPeople.length - PREFETCH_REMAINING_ITEMS);
 
   const retryActiveGrid = () => {
     setSectionError(null);
@@ -743,7 +956,7 @@ export function FindPeople() {
       <div className="sticky top-0 z-40 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-neutral-800 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 pt-5">
           {/* Title */}
-          <div className="flex items-end justify-between gap-4">
+          <div className={`${isSearchMode ? 'sr-only' : 'flex'} items-end justify-between gap-4`}>
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
                 Find People
@@ -763,6 +976,17 @@ export function FindPeople() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => {
+                    if (!searchQuery.trim()) setSearchFocused(false);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      setSearchQuery('');
+                      setSearchFocused(false);
+                      event.currentTarget.blur();
+                    }
+                  }}
                   placeholder="Search by name, username, college, skills..."
                   className="w-full pl-11 pr-10 py-2.5 rounded-full border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm text-gray-900 dark:text-white placeholder-gray-500 outline-none shadow-sm transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
@@ -775,10 +999,13 @@ export function FindPeople() {
                     <X className="w-4 h-4" />
                   </button>
                 )}
+                {loading && isAuthoritativeSearch && (
+                  <Loader2 className="absolute right-11 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-blue-600" aria-label="Searching" />
+                )}
               </div>
 
               {/* Mobile filter trigger */}
-              <button
+              {!isSearchMode && <button
                 onClick={() => setShowMobileFilters(true)}
                 className={`lg:hidden relative flex items-center gap-2 px-4 py-2.5 rounded-full border text-sm font-semibold shadow-sm transition-colors ${
                   hasActiveFilters
@@ -793,12 +1020,12 @@ export function FindPeople() {
                     {activeFilterCount}
                   </span>
                 )}
-              </button>
+              </button>}
             </div>
           )}
 
           {/* Tabs — underline style */}
-          <nav className="mt-3 -mb-px flex gap-1 overflow-x-auto scrollbar-hide" aria-label="Find people tabs">
+          {!isSearchMode && <nav className="mt-3 -mb-px flex gap-1 overflow-x-auto scrollbar-hide" aria-label="Find people tabs">
             {tabItems.map(({ id, label, Icon }) => (
               <button
                 key={id}
@@ -816,7 +1043,7 @@ export function FindPeople() {
                 {label}
               </button>
             ))}
-          </nav>
+          </nav>}
         </div>
       </div>
 
@@ -833,8 +1060,153 @@ export function FindPeople() {
 
         {/* Main content */}
         <main className="flex-1 min-w-0">
+          {isSearchResultsVisible && (
+            <section className="mx-auto max-w-3xl" aria-label="People search results">
+              {normalizedSearchQuery.length < SEARCH_MIN_CHARACTERS ? (
+                <div className="space-y-7">
+                  {recentSearches.length > 0 && (
+                    <div>
+                      <h2 className="text-sm font-bold text-gray-900 dark:text-white">Recent searches</h2>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {recentSearches.slice(0, 10).map((recent) => (
+                          <button
+                            key={recent}
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => setSearchQuery(recent)}
+                            className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:border-blue-300 hover:text-blue-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300"
+                          >
+                            {recent}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {recentProfiles.length > 0 && (
+                    <div>
+                      <h2 className="text-sm font-bold text-gray-900 dark:text-white">Recently viewed</h2>
+                      <div className="mt-2 divide-y divide-gray-100 dark:divide-neutral-800">
+                        {recentProfiles.slice(0, 8).map((person) => (
+                          <ProfileLink
+                            key={person.id}
+                            profileId={person.username || person.id}
+                            className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-3 hover:bg-gray-100/80 dark:hover:bg-neutral-900"
+                          >
+                            <UserAvatar
+                              imageSrc={person.profileImage}
+                              name={person.name || person.username || 'Vormex user'}
+                              className="h-11 w-11 shrink-0 bg-gray-100 text-sm font-semibold dark:bg-neutral-800"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex min-w-0 items-center gap-1.5">
+                                <span className="truncate text-sm font-bold text-gray-900 dark:text-white">
+                                  {person.name?.trim() || person.username?.trim() || 'Vormex user'}
+                                </span>
+                                <VerificationBadge
+                                  profileBadgeStyle={person.profileBadgeStyle}
+                                  isPremium={person.isPremium}
+                                  size="small"
+                                />
+                              </span>
+                              <span className="block truncate text-xs text-gray-500 dark:text-neutral-400">
+                                @{person.username}
+                              </span>
+                              {(person.headline || person.college) && (
+                                <span className="mt-0.5 block truncate text-xs text-gray-600 dark:text-neutral-300">
+                                  {person.headline || person.college}
+                                </span>
+                              )}
+                            </span>
+                          </ProfileLink>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {recentSearches.length === 0 && recentProfiles.length === 0 && (
+                    <div className="py-16 text-center">
+                      <Search className="mx-auto h-10 w-10 text-gray-300 dark:text-neutral-700" />
+                      <h2 className="mt-4 font-semibold text-gray-900 dark:text-white">Search the Vormex community</h2>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-neutral-400">
+                        Enter at least two characters to search names, skills, interests, colleges and branches.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  {!loading && !isSearchDebouncing && !searchError && displayedPeople.length > 0 && (
+                    <p className="mb-2 px-3 text-xs font-medium text-gray-500 dark:text-neutral-400">
+                      {total.toLocaleString()} matching result{total !== 1 ? 's' : ''}
+                    </p>
+                  )}
+
+                  {(loading || isSearchDebouncing) && displayedPeople.length === 0 && (
+                    <div className="divide-y divide-gray-100 dark:divide-neutral-800">
+                      {Array.from({ length: 7 }).map((_, index) => (
+                        <SearchPersonRowSkeleton key={index} />
+                      ))}
+                    </div>
+                  )}
+
+                  {!loading && !isSearchDebouncing && searchError && displayedPeople.length === 0 && (
+                    <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-12 text-center dark:border-red-900/60 dark:bg-red-950/20">
+                      <AlertCircle className="mx-auto h-10 w-10 text-red-400" />
+                      <p className="mt-3 text-sm text-red-600 dark:text-red-400">{searchError}</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void queryClient.removeQueries({
+                            queryKey: queryKeys.peopleSearch(user?.id ?? 'anonymous', normalizedDebouncedSearch),
+                          });
+                          setSearchRetryVersion((version) => version + 1);
+                        }}
+                        className="mt-4 rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+
+                  {!loading && !isSearchDebouncing && !searchError && displayedPeople.length === 0 && (
+                    <div className="py-16 text-center">
+                      <Users className="mx-auto h-10 w-10 text-gray-300 dark:text-neutral-700" />
+                      <h2 className="mt-4 font-semibold text-gray-900 dark:text-white">No people found</h2>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-neutral-400">Try a name, skill, interest, college or branch.</p>
+                    </div>
+                  )}
+
+                  {displayedPeople.length > 0 && (
+                    <div className="divide-y divide-gray-100 dark:divide-neutral-800">
+                      {displayedPeople.map((person, index) => (
+                        <div key={person.id} ref={index === prefetchIndex ? loadMoreRef : undefined}>
+                          <SearchPersonRow
+                            person={person}
+                            query={normalizedDebouncedSearch}
+                            onConnectionChange={handleConnectionChange}
+                            onProfileIntent={handleProfileIntent}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {sectionError && displayedPeople.length > 0 && (
+                    <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300">
+                      <span className="truncate">{sectionError}</span>
+                      <button type="button" onClick={() => void loadMore(true)} className="shrink-0 font-semibold underline underline-offset-2">
+                        Retry
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
           {/* Active filter chips + result count */}
-          {activeTab === 'all' && (hasActiveFilters || debouncedSearchQuery) && !isGridLoading && (
+          {!isSearchMode && activeTab === 'all' && hasActiveFilters && !isGridLoading && (
             <div className="mb-4 flex flex-wrap items-center gap-2">
               {activeFilterChips}
               {hasActiveFilters && (
@@ -861,7 +1233,7 @@ export function FindPeople() {
 
           {/* Skeleton Loading */}
           {isGridTab && isGridLoading && (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (
                 <PersonCardSkeleton key={i} />
               ))}
@@ -869,7 +1241,7 @@ export function FindPeople() {
           )}
 
           {/* Error State */}
-          {activeTab === 'all' && !isGridLoading && initialError && (
+          {!isSearchMode && activeTab === 'all' && !isGridLoading && initialError && (
             <div className="text-center py-16 bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800">
               <AlertCircle className="w-12 h-12 mx-auto text-red-400 mb-4" />
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
@@ -938,20 +1310,22 @@ export function FindPeople() {
 
           {/* People Grid */}
           {isGridTab && !isGridLoading && displayedPeople.length > 0 && (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {displayedPeople.map((person) => (
-                <PersonCard
-                  key={person.id}
-                  person={person}
-                  onConnectionChange={handleConnectionChange}
-                />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {displayedPeople.map((person, index) => (
+                <div key={person.id} ref={index === prefetchIndex ? loadMoreRef : undefined} className="min-w-0">
+                  <PersonCard
+                    person={person}
+                    onConnectionChange={handleConnectionChange}
+                    onProfileIntent={handleProfileIntent}
+                  />
+                </div>
               ))}
             </div>
           )}
 
           {/* Load More Trigger */}
-          {isGridTab && activeGridHasMore && !isGridLoading && (
-            <div ref={loadMoreRef} className="flex justify-center py-8">
+          {(isGridTab || isSearchResultsVisible) && activeGridHasMore && !isGridLoading && (
+            <div className="flex justify-center py-8">
               {loadingMore ? (
                 <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
               ) : (
@@ -960,7 +1334,7 @@ export function FindPeople() {
                   className="flex items-center gap-2 px-6 py-2 rounded-full border border-gray-300 dark:border-neutral-700 text-sm font-semibold text-gray-600 dark:text-neutral-400 hover:bg-white dark:hover:bg-neutral-900 hover:text-gray-800 dark:hover:text-neutral-200 transition-colors"
                 >
                   <RefreshCw className="w-4 h-4" />
-                  Load next 50
+                  Load more
                 </button>
               )}
             </div>
