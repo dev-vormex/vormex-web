@@ -599,7 +599,7 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
           style={{
             background: '#ecf0f3',
             borderRadius: '24px',
-            boxShadow: '10px 10px 20px #d1d9e6, -10px -10px 20px #f9f9f9',
+            border: '1px solid #d1d9e6',
           }}
         >
           {/* Header */}
