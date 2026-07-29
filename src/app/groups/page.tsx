@@ -1,75 +1,74 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { GroupCard, CreateGroupModal } from '@/components/groups';
-import { getMyGroups, discoverGroups, joinGroup, leaveGroup, Group, getUserPendingInvites, respondToInvite, GroupInvite } from '@/lib/api/groups';
+import { useAuth } from '@/lib/auth/useAuth';
+import {
+  getMyGroups,
+  discoverGroups,
+  joinGroup,
+  leaveGroup,
+  getUserPendingInvites,
+  respondToInvite,
+  GroupsResponse,
+} from '@/lib/api/groups';
+import { queryKeys } from '@/lib/queryKeys';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 
 type Tab = 'my-groups' | 'discover' | 'invites';
 
+function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (!error || typeof error !== 'object' || !('response' in error)) {
+    return fallback;
+  }
+  const response = (error as { response?: { data?: { error?: unknown } } }).response;
+  return typeof response?.data?.error === 'string' ? response.data.error : fallback;
+}
+
 function GroupsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
   const tabParam = searchParams.get('tab') as Tab | null;
   const [activeTab, setActiveTab] = useState<Tab>(tabParam === 'invites' ? 'invites' : 'my-groups');
-  const [myGroups, setMyGroups] = useState<Group[]>([]);
-  const [discoverList, setDiscoverList] = useState<Group[]>([]);
-  const [pendingInvites, setPendingInvites] = useState<GroupInvite[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [joiningGroupId, setJoiningGroupId] = useState<string | null>(null);
   const [respondingInviteId, setRespondingInviteId] = useState<string | null>(null);
+  const groupsEnabled = Boolean(user?.id);
+  const myGroupsKey = queryKeys.groupsMy(user?.id);
+  const discoverGroupsKey = queryKeys.groupsDiscover(user?.id);
+  const groupInvitesKey = queryKeys.groupInvites(user?.id);
 
-  // Handle tab from URL
-  useEffect(() => {
-    if (tabParam === 'invites') {
-      setActiveTab('invites');
-    }
-  }, [tabParam]);
+  const myGroupsQuery = useQuery({
+    queryKey: myGroupsKey,
+    queryFn: () => getMyGroups(),
+    enabled: groupsEnabled,
+  });
+  const discoverGroupsQuery = useQuery({
+    queryKey: discoverGroupsKey,
+    queryFn: () => discoverGroups(),
+    enabled: groupsEnabled,
+  });
+  const pendingInvitesQuery = useQuery({
+    queryKey: groupInvitesKey,
+    queryFn: getUserPendingInvites,
+    enabled: groupsEnabled,
+  });
 
-  // Fetch my groups
-  const fetchMyGroups = async () => {
-    try {
-      const data = await getMyGroups();
-      setMyGroups(data.groups);
-    } catch (error) {
-      console.error('Failed to fetch my groups:', error);
-    }
-  };
-
-  // Fetch discover groups
-  const fetchDiscoverGroups = async () => {
-    try {
-      const data = await discoverGroups();
-      setDiscoverList(data.groups);
-    } catch (error) {
-      console.error('Failed to fetch discover groups:', error);
-    }
-  };
-
-  // Fetch pending invites
-  const fetchPendingInvites = async () => {
-    try {
-      const data = await getUserPendingInvites();
-      setPendingInvites(data.invites || []);
-    } catch (error) {
-      console.error('Failed to fetch pending invites:', error);
-    }
-  };
-
-  // Initial fetch
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      await Promise.all([fetchMyGroups(), fetchDiscoverGroups(), fetchPendingInvites()]);
-      setLoading(false);
-    };
-    fetchData();
-  }, []);
+  const myGroups = myGroupsQuery.data?.groups ?? [];
+  const discoverList = discoverGroupsQuery.data?.groups ?? [];
+  const pendingInvites = pendingInvitesQuery.data?.invites ?? [];
+  const loading = groupsEnabled && (
+    myGroupsQuery.isPending ||
+    discoverGroupsQuery.isPending ||
+    pendingInvitesQuery.isPending
+  );
 
   // Handle join group
   const handleJoin = async (groupId: string) => {
@@ -81,15 +80,23 @@ function GroupsPageInner() {
         // Move from discover to my groups
         const group = discoverList.find(g => g.id === groupId);
         if (group) {
-          setMyGroups(prev => [...prev, { ...group, isMember: true, memberRole: 'MEMBER' }]);
-          setDiscoverList(prev => prev.filter(g => g.id !== groupId));
+          queryClient.setQueryData<GroupsResponse>(myGroupsKey, current => current ? {
+            ...current,
+            groups: current.groups.some(item => item.id === groupId)
+              ? current.groups
+              : [...current.groups, { ...group, isMember: true, memberRole: 'MEMBER' }],
+          } : current);
+          queryClient.setQueryData<GroupsResponse>(discoverGroupsKey, current => current ? {
+            ...current,
+            groups: current.groups.filter(item => item.id !== groupId),
+          } : current);
         }
       } else {
         // Request pending
         alert('Join request sent! You will be notified when approved.');
       }
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to join group');
+    } catch (error: unknown) {
+      alert(getApiErrorMessage(error, 'Failed to join group'));
     } finally {
       setJoiningGroupId(null);
     }
@@ -103,17 +110,25 @@ function GroupsPageInner() {
       await leaveGroup(groupId);
       const group = myGroups.find(g => g.id === groupId);
       if (group) {
-        setDiscoverList(prev => [...prev, { ...group, isMember: false, memberRole: null }]);
-        setMyGroups(prev => prev.filter(g => g.id !== groupId));
+        queryClient.setQueryData<GroupsResponse>(discoverGroupsKey, current => current ? {
+          ...current,
+          groups: current.groups.some(item => item.id === groupId)
+            ? current.groups
+            : [...current.groups, { ...group, isMember: false, memberRole: null }],
+        } : current);
+        queryClient.setQueryData<GroupsResponse>(myGroupsKey, current => current ? {
+          ...current,
+          groups: current.groups.filter(item => item.id !== groupId),
+        } : current);
       }
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to leave group');
+    } catch (error: unknown) {
+      alert(getApiErrorMessage(error, 'Failed to leave group'));
     }
   };
 
   // Handle group created
   const handleGroupCreated = () => {
-    fetchMyGroups();
+    void queryClient.invalidateQueries({ queryKey: myGroupsKey });
   };
 
   // Handle respond to invite
@@ -123,15 +138,21 @@ function GroupsPageInner() {
       const result = await respondToInvite(inviteId, action);
       
       // Remove from pending invites
-      setPendingInvites(prev => prev.filter(i => i.id !== inviteId));
+      queryClient.setQueryData<Awaited<ReturnType<typeof getUserPendingInvites>>>(
+        groupInvitesKey,
+        current => current ? {
+          ...current,
+          invites: current.invites.filter(invite => invite.id !== inviteId),
+        } : current
+      );
       
       if (action === 'accept' && result.groupSlug) {
         // Refresh my groups and navigate to the group
-        await fetchMyGroups();
+        await myGroupsQuery.refetch();
         router.push(`/groups/${result.groupSlug}`);
       }
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to respond to invite');
+    } catch (error: unknown) {
+      alert(getApiErrorMessage(error, 'Failed to respond to invite'));
     } finally {
       setRespondingInviteId(null);
     }

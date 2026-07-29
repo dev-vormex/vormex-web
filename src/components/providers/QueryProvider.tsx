@@ -8,6 +8,8 @@ import {
   CHAT_STALE_TIME,
   FEED_STALE_TIME,
   FIND_PEOPLE_STALE_TIME,
+  GROUPS_GC_TIME,
+  GROUPS_STALE_TIME,
   PROFILE_STALE_TIME,
   STANDARD_GC_TIME,
   STANDARD_STALE_TIME,
@@ -56,6 +58,10 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         staleTime: CHAT_STALE_TIME,
         gcTime: CHAT_GC_TIME,
         refetchOnMount: false,
+      });
+      client.setQueryDefaults(['groups'], {
+        staleTime: GROUPS_STALE_TIME,
+        gcTime: GROUPS_GC_TIME,
       });
 
       return client;
