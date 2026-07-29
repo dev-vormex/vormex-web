@@ -44,7 +44,7 @@ function getStoredWallpaper(conversationId: string): string {
   if (typeof window === 'undefined') return 'default';
 
   try {
-    return localStorage.getItem(`chat_wallpaper_${conversationId}`) || 'default';
+    return sessionStorage.getItem(`chat_wallpaper_${conversationId}`) || 'default';
   } catch {
     return 'default';
   }
@@ -274,7 +274,7 @@ export default function ConversationPage({ params }: ConversationPageProps) {
 
   useEffect(() => {
     if (wallpaper !== 'default' && effectiveWallpaper === 'default') {
-      localStorage.setItem(`chat_wallpaper_${conversationId}`, 'default');
+      sessionStorage.setItem(`chat_wallpaper_${conversationId}`, 'default');
     }
   }, [conversationId, effectiveWallpaper, wallpaper]);
 
@@ -284,7 +284,7 @@ export default function ConversationPage({ params }: ConversationPageProps) {
       ...previousWallpapers,
       [conversationId]: newWallpaper,
     }));
-    localStorage.setItem(`chat_wallpaper_${conversationId}`, newWallpaper);
+    sessionStorage.setItem(`chat_wallpaper_${conversationId}`, newWallpaper);
   };
 
   const handleUploadingMessagesChange = useCallback((messages: UploadingMessage[]) => {

@@ -35,7 +35,7 @@ function storage(): Storage | null {
   }
 
   try {
-    return window.localStorage;
+    return window.sessionStorage;
   } catch {
     return null;
   }
@@ -53,6 +53,7 @@ function readSnapshot<T>(
   if (!cacheStorage) return undefined;
 
   try {
+    window.localStorage.removeItem(key);
     const raw = cacheStorage.getItem(key);
     if (!raw) return undefined;
 
@@ -82,6 +83,7 @@ function writeSnapshot<T>(key: string, value: T): void {
   if (!cacheStorage) return;
 
   try {
+    window.localStorage.removeItem(key);
     cacheStorage.setItem(
       key,
       JSON.stringify({
@@ -220,4 +222,26 @@ export function writeCachedMessages(
     setTimeout(() => flushMessageCacheWrite(key), MESSAGE_CACHE_WRITE_DEBOUNCE_MS)
   );
   registerPageHideFlush();
+}
+
+export function clearChatBrowserCache(): void {
+  pendingMessageWriteTimers.forEach((timer) => clearTimeout(timer));
+  pendingMessageWriteTimers.clear();
+  pendingMessageWrites.clear();
+
+  if (typeof window === 'undefined') return;
+  for (const cacheStorage of [window.sessionStorage, window.localStorage]) {
+    try {
+      const keys = Array.from({ length: cacheStorage.length }, (_, index) => cacheStorage.key(index))
+        .filter((key): key is string => Boolean(
+          key?.startsWith(`${CACHE_PREFIX}:`)
+          || key?.startsWith('vormex:chat:sync-cursor:')
+          || key?.startsWith('chat_wallpaper_')
+          || key?.startsWith('chat_muted_')
+        ));
+      keys.forEach((key) => cacheStorage.removeItem(key));
+    } catch {
+      // Best-effort privacy cleanup when browser storage is restricted.
+    }
+  }
 }

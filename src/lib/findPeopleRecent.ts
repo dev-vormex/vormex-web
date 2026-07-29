@@ -10,7 +10,8 @@ function storageKey(viewerId: string, kind: 'searches' | 'profiles'): string {
 function readArray<T>(key: string): T[] {
   if (typeof window === 'undefined') return [];
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(key) || '[]');
+    window.localStorage.removeItem(key);
+    const parsed = JSON.parse(window.sessionStorage.getItem(key) || '[]');
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -34,7 +35,7 @@ export function rememberPeopleSearch(viewerId: string | null | undefined, query:
       (value) => value.toLocaleLowerCase() !== normalized.toLocaleLowerCase()
     ),
   ].slice(0, MAX_RECENT_SEARCHES);
-  window.localStorage.setItem(storageKey(viewerId, 'searches'), JSON.stringify(next));
+  window.sessionStorage.setItem(storageKey(viewerId, 'searches'), JSON.stringify(next));
   return next;
 }
 
@@ -71,6 +72,19 @@ export function rememberPeopleProfile(
     recent,
     ...readRecentPeopleProfiles(viewerId).filter((value) => value.id !== person.id),
   ].slice(0, MAX_RECENT_PROFILES);
-  window.localStorage.setItem(storageKey(viewerId, 'profiles'), JSON.stringify(next));
+  window.sessionStorage.setItem(storageKey(viewerId, 'profiles'), JSON.stringify(next));
   return next;
+}
+
+export function clearRecentPeople(viewerId: string | undefined | null): void {
+  if (!viewerId || typeof window === 'undefined') return;
+  try {
+    for (const kind of ['searches', 'profiles'] as const) {
+      const key = storageKey(viewerId, kind);
+      window.sessionStorage.removeItem(key);
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Logout must continue even when browser storage is blocked.
+  }
 }

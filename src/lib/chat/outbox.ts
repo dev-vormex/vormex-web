@@ -169,6 +169,18 @@ export async function deleteChatOutboxEntry(clientMessageId: string): Promise<vo
   });
 }
 
+export async function clearChatOutbox(ownerId: string | undefined | null): Promise<void> {
+  if (!ownerId) return;
+  const timer = drainTimers.get(ownerId);
+  if (timer) clearTimeout(timer);
+  drainTimers.delete(ownerId);
+
+  const entries = await listChatOutboxEntries(ownerId).catch(() => []);
+  await Promise.allSettled(
+    entries.map((entry) => deleteChatOutboxEntry(entry.clientMessageId))
+  );
+}
+
 async function sendEntry(entry: ChatOutboxEntry, onUploadProgress?: (progress: number) => void): Promise<Message> {
   let activeEntry = entry;
 

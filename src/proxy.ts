@@ -59,6 +59,11 @@ export function proxy(request: NextRequest) {
     response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
   }
 
+  if (isPrivateIndexPath(request.nextUrl.pathname)) {
+    response.headers.set('Cache-Control', 'no-store, private');
+    response.headers.set('Pragma', 'no-cache');
+  }
+
   return response;
 }
 

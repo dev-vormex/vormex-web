@@ -16,6 +16,9 @@ import { disconnectSocket } from '@/lib/socket';
 import { clearCachedFeed } from '@/lib/feed/browserCache';
 import { clearDailyModules } from '@/lib/feed/dailyModulesCache';
 import { clearCachedStories } from '@/lib/stories/browserCache';
+import { clearChatBrowserCache } from '@/lib/chat/browserCache';
+import { clearChatOutbox } from '@/lib/chat/outbox';
+import { clearRecentPeople } from '@/lib/findPeopleRecent';
 
 const AUTH_PRESENT_COOKIE = 'vx_auth_present';
 const CSRF_COOKIE = 'vx_csrf';
@@ -70,6 +73,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               clearCachedFeed(cachedUser?.id);
               clearDailyModules(cachedUser?.id);
               clearCachedStories(cachedUser?.id);
+              clearChatBrowserCache();
+              void clearChatOutbox(cachedUser?.id);
+              clearRecentPeople(cachedUser?.id);
               Cookies.remove('authToken');
               Cookies.remove(AUTH_PRESENT_COOKIE);
               Cookies.remove(CSRF_COOKIE);
@@ -167,6 +173,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearCachedFeed(user?.id);
     clearDailyModules(user?.id);
     clearCachedStories(user?.id);
+    clearChatBrowserCache();
+    void clearChatOutbox(user?.id);
+    clearRecentPeople(user?.id);
     authAPI.logout().catch(() => undefined);
     Cookies.remove('authToken');
     Cookies.remove(AUTH_PRESENT_COOKIE);

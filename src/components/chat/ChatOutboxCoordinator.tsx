@@ -72,19 +72,19 @@ export default function ChatOutboxCoordinator() {
     }
 
     window.dispatchEvent(new CustomEvent<ChatSyncResponse>(CHAT_SYNC_EVENT, { detail: response }));
-  }, [queryClient, user?.id]);
+  }, [queryClient, user]);
 
   const runDeltaSync = useCallback(async () => {
     if (!user?.id || syncRunningRef.current) return;
     syncRunningRef.current = true;
     try {
-      let cursor = localStorage.getItem(syncCursorKey(user.id)) || undefined;
+      let cursor = sessionStorage.getItem(syncCursorKey(user.id)) || undefined;
       let hasMore = false;
       do {
         const response = await syncChat(cursor);
         applySyncResponse(response);
         cursor = response.cursor;
-        localStorage.setItem(syncCursorKey(user.id), response.cursor);
+        sessionStorage.setItem(syncCursorKey(user.id), response.cursor);
         hasMore = response.hasMore;
       } while (hasMore);
     } catch (error) {
@@ -92,7 +92,7 @@ export default function ChatOutboxCoordinator() {
     } finally {
       syncRunningRef.current = false;
     }
-  }, [applySyncResponse, user?.id]);
+  }, [applySyncResponse, user]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -159,7 +159,7 @@ export default function ChatOutboxCoordinator() {
         messages: [message],
         statusChanges: [],
         conversations: [],
-        cursor: localStorage.getItem(syncCursorKey(user.id)) || '',
+        cursor: sessionStorage.getItem(syncCursorKey(user.id)) || '',
         hasMore: false,
       });
     }) ?? undefined;

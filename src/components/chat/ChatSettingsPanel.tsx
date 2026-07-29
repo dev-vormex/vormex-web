@@ -92,7 +92,7 @@ export default function ChatSettingsPanel({
   const [activeTab, setActiveTab] = useState<TabType>('settings');
   const [isMuted, setIsMuted] = useState(() => {
     if (typeof window === 'undefined') return false;
-    return localStorage.getItem(`chat_muted_${conversationId}`) === 'true';
+    return sessionStorage.getItem(`chat_muted_${conversationId}`) === 'true';
   });
   const [mediaFilter, setMediaFilter] = useState<'all' | 'images' | 'videos' | 'files'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -100,7 +100,7 @@ export default function ChatSettingsPanel({
   const handleMuteToggle = () => {
     const newMuted = !isMuted;
     setIsMuted(newMuted);
-    localStorage.setItem(`chat_muted_${conversationId}`, String(newMuted));
+    sessionStorage.setItem(`chat_muted_${conversationId}`, String(newMuted));
   };
 
   // Filter media items

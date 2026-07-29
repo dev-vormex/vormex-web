@@ -20,7 +20,7 @@ export type FeedCacheSnapshot = CacheEnvelope;
 function storage(): Storage | null {
   if (typeof window === 'undefined') return null;
   try {
-    return window.localStorage;
+    return window.sessionStorage;
   } catch {
     return null;
   }
@@ -28,6 +28,14 @@ function storage(): Storage | null {
 
 function feedKey(userId: string): string {
   return `${CACHE_PREFIX}:${encodeURIComponent(userId)}`;
+}
+
+function removeLegacySnapshot(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Ignore blocked storage; the session cache remains optional.
+  }
 }
 
 function isFeedResponse(value: unknown): value is FeedResponse {
@@ -70,6 +78,7 @@ export function readCachedFeed(
   if (!cacheStorage) return undefined;
 
   const key = feedKey(userId);
+  removeLegacySnapshot(key);
   try {
     const raw = cacheStorage.getItem(key);
     if (!raw) return undefined;
@@ -101,6 +110,7 @@ export function writeCachedFeed(
   if (!cacheStorage || !normalized) return;
 
   try {
+    removeLegacySnapshot(feedKey(userId));
     cacheStorage.setItem(
       feedKey(userId),
       JSON.stringify({ savedAt, value: normalized } satisfies CacheEnvelope)
@@ -112,5 +122,10 @@ export function writeCachedFeed(
 
 export function clearCachedFeed(userId?: string | null): void {
   if (!userId) return;
-  storage()?.removeItem(feedKey(userId));
+  try {
+    storage()?.removeItem(feedKey(userId));
+    window.localStorage.removeItem(feedKey(userId));
+  } catch {
+    // Best-effort cleanup of snapshots created by older releases.
+  }
 }

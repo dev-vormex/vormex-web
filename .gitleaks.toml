@@ -1,0 +1,17 @@
+title = "Vormex Web Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Generated or dependency files"
+paths = [
+  '''package-lock\.json$''',
+  '''\.next/''',
+  '''node_modules/''',
+]
+
+regexes = [
+  '''your-[a-z0-9-]+''',
+  '''replace-with-[a-z0-9-]+''',
+]

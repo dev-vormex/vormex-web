@@ -25,7 +25,7 @@ function storage(): Storage | null {
   }
 
   try {
-    return window.localStorage;
+    return window.sessionStorage;
   } catch {
     return null;
   }
@@ -33,6 +33,14 @@ function storage(): Storage | null {
 
 function storiesKey(userId: string): string {
   return `${CACHE_PREFIX}:${encodeURIComponent(userId)}`;
+}
+
+function removeLegacySnapshot(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Ignore blocked storage; the session cache remains optional.
+  }
 }
 
 function isStoryGroupList(value: unknown): value is StoryGroup[] {
@@ -76,6 +84,7 @@ export function readCachedStories(
   if (!cacheStorage) return undefined;
 
   const key = storiesKey(userId);
+  removeLegacySnapshot(key);
   try {
     const raw = cacheStorage.getItem(key);
     if (!raw) return undefined;
@@ -111,6 +120,7 @@ export function writeCachedStories(
   if (!cacheStorage) return;
 
   try {
+    removeLegacySnapshot(storiesKey(userId));
     cacheStorage.setItem(
       storiesKey(userId),
       JSON.stringify({
@@ -125,5 +135,10 @@ export function writeCachedStories(
 
 export function clearCachedStories(userId?: string | null): void {
   if (!userId) return;
-  storage()?.removeItem(storiesKey(userId));
+  try {
+    storage()?.removeItem(storiesKey(userId));
+    window.localStorage.removeItem(storiesKey(userId));
+  } catch {
+    // Best-effort cleanup of snapshots created by older releases.
+  }
 }

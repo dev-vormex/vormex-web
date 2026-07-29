@@ -36,7 +36,7 @@ beforeEach(() => {
   originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
-    value: { localStorage: new TestStorage() },
+    value: { localStorage: new TestStorage(), sessionStorage: new TestStorage() },
   });
 });
 

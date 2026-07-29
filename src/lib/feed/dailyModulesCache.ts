@@ -14,7 +14,7 @@ export type DailyModuleSnapshot<T> = {
 function storage(): Storage | null {
   if (typeof window === 'undefined') return null;
   try {
-    return window.localStorage;
+    return window.sessionStorage;
   } catch {
     return null;
   }
@@ -22,6 +22,14 @@ function storage(): Storage | null {
 
 function moduleKey(userId: string, module: DailyFeedModule): string {
   return `${CACHE_PREFIX}:${encodeURIComponent(userId)}:${module}`;
+}
+
+function removeLegacySnapshot(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Ignore blocked storage; the session cache remains optional.
+  }
 }
 
 export function readDailyModule<T>(
@@ -34,6 +42,7 @@ export function readDailyModule<T>(
   const cacheStorage = storage();
   if (!cacheStorage) return undefined;
   const key = moduleKey(userId, module);
+  removeLegacySnapshot(key);
 
   try {
     const raw = cacheStorage.getItem(key);
@@ -62,7 +71,9 @@ export function writeDailyModule<T>(
 ): void {
   if (!userId) return;
   try {
-    storage()?.setItem(moduleKey(userId, module), JSON.stringify({ savedAt, value }));
+    const key = moduleKey(userId, module);
+    removeLegacySnapshot(key);
+    storage()?.setItem(key, JSON.stringify({ savedAt, value }));
   } catch {
     // React Query remains the in-memory fallback if browser storage is unavailable.
   }
@@ -72,6 +83,12 @@ export function clearDailyModules(userId: string | undefined | null): void {
   if (!userId) return;
   const cacheStorage = storage();
   if (!cacheStorage) return;
-  cacheStorage.removeItem(moduleKey(userId, 'daily-matches'));
-  cacheStorage.removeItem(moduleKey(userId, 'smart-matches'));
+  try {
+    cacheStorage.removeItem(moduleKey(userId, 'daily-matches'));
+    cacheStorage.removeItem(moduleKey(userId, 'smart-matches'));
+    window.localStorage.removeItem(moduleKey(userId, 'daily-matches'));
+    window.localStorage.removeItem(moduleKey(userId, 'smart-matches'));
+  } catch {
+    // Best-effort cleanup of snapshots created by older releases.
+  }
 }

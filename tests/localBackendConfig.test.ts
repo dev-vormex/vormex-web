@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveBackendUrl } from '../next.config';
+import { buildSecurityHeaders, resolveBackendUrl } from '../next.config';
 import { resolveApiUrl, resolveSocketUrl } from '../src/lib/utils/constants';
 
 test('local web defaults proxy REST to localhost:5000', () => {
@@ -33,4 +33,17 @@ test('production retains the secure backend fallback when deployment env is inco
     resolveSocketUrl({ NODE_ENV: 'production' }),
     'https://vormex-backend.onrender.com'
   );
+});
+
+test('production responses enforce privacy and browser security headers', () => {
+  const headers = new Map(
+    buildSecurityHeaders({ NODE_ENV: 'production', NEXT_PUBLIC_BACKEND_URL: 'https://api.example.com' })
+      .map(({ key, value }) => [key, value])
+  );
+
+  assert.match(headers.get('Content-Security-Policy') ?? '', /frame-ancestors 'none'/);
+  assert.doesNotMatch(headers.get('Content-Security-Policy') ?? '', /unsafe-eval/);
+  assert.equal(headers.get('X-Content-Type-Options'), 'nosniff');
+  assert.equal(headers.get('X-Frame-Options'), 'DENY');
+  assert.match(headers.get('Strict-Transport-Security') ?? '', /includeSubDomains/);
 });

@@ -146,8 +146,15 @@ function AccountabilityContent() {
     }
   }, []);
 
-  useEffect(() => { fetchPartners(); }, [fetchPartners]);
-  useEffect(() => { if (tab === 'mentorship') fetchMentorships(); }, [tab, fetchMentorships]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void fetchPartners(), 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchPartners]);
+  useEffect(() => {
+    if (tab !== 'mentorship') return;
+    const timer = window.setTimeout(() => void fetchMentorships(), 0);
+    return () => window.clearTimeout(timer);
+  }, [tab, fetchMentorships]);
 
   const handleCheckIn = async (pairId: string) => {
     try {
