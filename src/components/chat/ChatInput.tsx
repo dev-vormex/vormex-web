@@ -14,6 +14,7 @@ import {
 import { getConnectionStatus, sendConnectionRequest, type ConnectionStatus } from '@/lib/api/connections';
 import { cn } from '@/lib/utils';
 import { handleApiError } from '@/lib/utils/errorHandler';
+import { isTerminalSafetyError } from '@/lib/api/errors';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Paperclip,
@@ -315,7 +316,10 @@ export default function ChatInput({
       setConnectionStatus('pending_sent');
       // Don't close prompt, show success message
     } catch (error: unknown) {
-      console.error('Failed to send connection request:', error);
+      if (isTerminalSafetyError(error)) {
+        setConnectionStatus('none');
+        return;
+      }
 
       const errorMessage = handleApiError(error).toLowerCase();
       if (
@@ -685,8 +689,11 @@ export default function ChatInput({
         setUploadingMessages(prev => prev.filter(m => m.id !== uploadId));
         playVoiceSfx();
       } catch (error) {
-        console.error('Failed to upload audio:', error);
         setUploadingMessages(prev => prev.filter(m => m.id !== uploadId));
+        if (isTerminalSafetyError(error)) {
+          onOptimisticMessageResolved?.(uploadId);
+          return;
+        }
         onOptimisticMessage?.({
           id: uploadId,
           conversationId,
@@ -756,8 +763,11 @@ export default function ChatInput({
             URL.revokeObjectURL(filePreview.preview);
           }
         } catch (error) {
-          console.error('Failed to upload file:', error);
           setUploadingMessages(prev => prev.filter(m => m.id !== uploadId));
+          if (isTerminalSafetyError(error)) {
+            onOptimisticMessageResolved?.(uploadId);
+            return;
+          }
           onOptimisticMessage?.({
             id: uploadId,
             conversationId,
@@ -826,7 +836,10 @@ export default function ChatInput({
           triggerMessageEffect(selectedMessageEffect);
         }
       } catch (error) {
-        console.error('Failed to send text message:', error);
+        if (isTerminalSafetyError(error)) {
+          onOptimisticMessageResolved?.(optimisticId);
+          return;
+        }
         onOptimisticMessage?.({ ...optimisticMsg, status: 'FAILED' });
       }
     }
@@ -838,6 +851,7 @@ export default function ChatInput({
     messageLimitInfo,
     onCancelReply,
     onOptimisticMessage,
+    onOptimisticMessageResolved,
     playVoiceSfx,
     replyTo,
     selectedFiles,
@@ -886,7 +900,7 @@ export default function ChatInput({
   const commonEmojis = ['😀', '😂', '❤️', '👍', '🔥', '🎉', '😊', '🙏', '💯', '✨', '😍', '🤔', '👀', '🙌', '💪'];
 
   return (
-    <div className="relative shrink-0 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+    <div className="relative shrink-0 border-t border-gray-200 bg-white px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] dark:border-gray-700 dark:bg-gray-900 sm:p-4 sm:pb-[calc(1rem+env(safe-area-inset-bottom))]">
       {/* AI Assistant Panel - positioned at container level for proper width */}
       <AnimatePresence>
         {showAIAssistant && otherUserId && (
@@ -1088,20 +1102,20 @@ export default function ChatInput({
       )}
 
       {/* Input area */}
-      <div className="flex items-end gap-2">
+      <div className="flex flex-wrap items-end gap-1.5 [&>button:last-child]:ml-auto sm:flex-nowrap sm:gap-2 sm:[&>button:last-child]:ml-0">
         {/* Attachment button with menu */}
         <div className="relative" ref={attachMenuRef}>
           <button
             onClick={() => setShowAttachMenu(!showAttachMenu)}
             className={cn(
-              "p-2 rounded-full transition-colors",
+              "rounded-full p-2 transition-colors",
               showAttachMenu 
                 ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600" 
                 : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
             )}
             title="Attach file"
           >
-            <Paperclip className="w-5 h-5" />
+            <Paperclip className="h-[18px] w-[18px] sm:h-5 sm:w-5" />
           </button>
 
           {/* Attachment menu */}
@@ -1171,14 +1185,14 @@ export default function ChatInput({
               setShowAttachMenu(false);
             }}
             className={cn(
-              "p-2 rounded-full transition-colors",
+              "rounded-full p-2 transition-colors",
               showAIAssistant
                 ? "bg-gradient-to-br from-purple-100 to-blue-100 dark:from-purple-900/30 dark:to-blue-900/30 text-purple-600"
                 : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
             )}
             title="AI Assistant"
           >
-            <Sparkles className="w-5 h-5" />
+            <Sparkles className="h-[18px] w-[18px] sm:h-5 sm:w-5" />
           </button>
         )}
 
@@ -1187,7 +1201,7 @@ export default function ChatInput({
           <button
             onClick={cycleMessageEffect}
             className={cn(
-              "p-2 rounded-full transition-colors relative",
+              "relative rounded-full p-2 transition-colors",
               selectedMessageEffect !== 'none'
                 ? "bg-orange-100 dark:bg-orange-900/30 text-orange-600"
                 : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -1198,7 +1212,7 @@ export default function ChatInput({
                 : `Message effect: ${selectedMessageEffect} (tap to cycle)`
             }
           >
-            <Zap className="w-5 h-5" />
+            <Zap className="h-[18px] w-[18px] sm:h-5 sm:w-5" />
             {selectedMessageEffect !== 'none' && (
               <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 px-1 py-0.5 rounded bg-orange-600 text-white text-[9px] leading-none uppercase tracking-wide">
                 {selectedMessageEffect === 'confetti' ? 'C' : 'F'}
@@ -1212,14 +1226,14 @@ export default function ChatInput({
           <button
             onClick={() => setShowEmoji(!showEmoji)}
             className={cn(
-              "p-2 rounded-full transition-colors",
+              "rounded-full p-2 transition-colors",
               showEmoji
                 ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600"
                 : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
             )}
             title="Add emoji"
           >
-            <Smile className="w-5 h-5" />
+            <Smile className="h-[18px] w-[18px] sm:h-5 sm:w-5" />
           </button>
 
           {/* Emoji picker */}
@@ -1286,7 +1300,7 @@ export default function ChatInput({
           </div>
         ) : (
           /* Text input */
-          <div className="flex-1 relative">
+          <div className="relative order-first w-full min-w-0 flex-none basis-full sm:order-none sm:w-auto sm:flex-1 sm:basis-auto">
             <textarea
               ref={inputRef}
               value={message}
@@ -1296,13 +1310,13 @@ export default function ChatInput({
               disabled={disabled}
               rows={1}
               className={cn(
-                'w-full resize-none rounded-2xl px-4 py-2.5',
+                'block min-h-11 w-full resize-none overflow-y-auto rounded-2xl px-3.5 py-2.5 text-sm leading-5 sm:px-4 sm:text-base sm:leading-6',
                 'bg-gray-100 dark:bg-gray-800',
                 'border border-transparent focus:border-blue-500',
                 'focus:outline-none focus:ring-2 focus:ring-blue-500/20',
                 'text-gray-900 dark:text-white placeholder-gray-500',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
-                'max-h-32'
+                'max-h-24 sm:max-h-32'
               )}
             />
           </div>
@@ -1314,13 +1328,13 @@ export default function ChatInput({
             onClick={startRecording}
             disabled={disabled}
             className={cn(
-              'p-3 rounded-full transition-all',
+              'rounded-full p-2.5 transition-all sm:p-3',
               'bg-gray-200 dark:bg-gray-700 text-gray-500 hover:bg-gray-300 dark:hover:bg-gray-600',
               'disabled:opacity-50 disabled:cursor-not-allowed'
             )}
             title="Record voice message"
           >
-            <Mic className="w-5 h-5" />
+            <Mic className="h-[18px] w-[18px] sm:h-5 sm:w-5" />
           </button>
         ) : (
           <>
@@ -1330,16 +1344,16 @@ export default function ChatInput({
                 onClick={handleQuickGrammarFix}
                 disabled={isFixingGrammar || disabled}
                 className={cn(
-                  'p-3 rounded-full transition-all',
+                  'rounded-full p-2.5 transition-all sm:p-3',
                   'bg-purple-100 dark:bg-purple-900/30 text-purple-600 hover:bg-purple-200 dark:hover:bg-purple-800/40',
                   'disabled:opacity-50 disabled:cursor-not-allowed'
                 )}
                 title="Fix grammar with AI"
               >
                 {isFixingGrammar ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Loader2 className="h-[18px] w-[18px] animate-spin sm:h-5 sm:w-5" />
                 ) : (
-                  <Pencil className="w-5 h-5" />
+                  <Pencil className="h-[18px] w-[18px] sm:h-5 sm:w-5" />
                 )}
               </button>
             )}
@@ -1349,14 +1363,14 @@ export default function ChatInput({
               onClick={handleSend}
               disabled={(!message.trim() && selectedFiles.length === 0 && !audioBlob) || disabled || isRecording}
               className={cn(
-                'p-3 rounded-full transition-all',
+                'rounded-full p-2.5 transition-all sm:p-3',
                 (message.trim() || selectedFiles.length > 0 || audioBlob)
                   ? 'bg-blue-600 text-white hover:bg-blue-700 scale-100'
                   : 'bg-gray-200 dark:bg-gray-700 text-gray-400 scale-95',
                 'disabled:opacity-50 disabled:cursor-not-allowed'
               )}
             >
-              <Send className="w-5 h-5" />
+              <Send className="h-[18px] w-[18px] sm:h-5 sm:w-5" />
             </button>
           </>
         )}

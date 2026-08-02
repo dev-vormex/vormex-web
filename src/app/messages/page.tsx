@@ -1,17 +1,41 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Search, X, MessageCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Search, X, MessageCircle } from 'lucide-react';
 import { ChatList } from '@/components/chat';
 import { useAuth } from '@/lib/auth/useAuth';
 
 export default function MessagesPage() {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
+  const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('notice') !== 'conversation_unavailable') return;
+
+    url.searchParams.delete('notice');
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    const showTimeoutId = window.setTimeout(() => setNotice('This conversation is unavailable.'), 0);
+    const timeoutId = window.setTimeout(() => setNotice(''), 5000);
+    return () => {
+      window.clearTimeout(showTimeoutId);
+      window.clearTimeout(timeoutId);
+    };
+  }, []);
 
   return (
     <div className="flex-1 min-h-0">
+      {notice && (
+        <div
+          role="status"
+          className="fixed left-1/2 top-4 z-50 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 shadow-lg dark:border-amber-900/60 dark:bg-amber-950 dark:text-amber-100"
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {notice}
+        </div>
+      )}
       {/* Mobile: show conversation list here (desktop sidebar already shows it) */}
       <div className="flex h-full min-h-0 flex-col md:hidden">
         <div className="px-4 pt-4 pb-3 border-b border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">

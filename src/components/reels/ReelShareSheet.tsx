@@ -6,7 +6,6 @@ import {
   X, 
   Search, 
   Send, 
-  Copy, 
   Check,
   Link2,
   MessageCircle,
@@ -16,6 +15,8 @@ import {
 import { Reel } from '@/lib/api/reels';
 import apiClient from '@/lib/api/client';
 import { searchUsersForMention } from '@/lib/api/posts';
+import { getStructuredApiError, isTerminalSafetyError } from '@/lib/api/errors';
+import { SAFETY_STATE_CHANGED_EVENT } from '@/lib/socket';
 
 interface ReelShareSheetProps {
   reel: Reel;
@@ -46,38 +47,45 @@ export function ReelShareSheet({ reel, isOpen, onClose }: ReelShareSheetProps) {
   const [sentTo, setSentTo] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
   const [message, setMessage] = useState('');
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (isOpen) {
-      fetchConversations();
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-      setSearchQuery('');
-      setSentTo(new Set());
-      setMessage('');
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
-
-  const fetchConversations = async () => {
+  const fetchConversations = useCallback(async () => {
     try {
       setIsLoading(true);
+      setActionError(null);
       const response = await apiClient.get('/chat/conversations');
       setConversations((response as unknown as { conversations?: Conversation[] })?.conversations || []);
     } catch (error) {
-      console.error('Failed to fetch conversations:', error);
       setConversations([]);
+      setActionError(getStructuredApiError(error).message || 'Unable to load conversations.');
     } finally {
       setIsLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    document.body.style.overflow = isOpen ? 'hidden' : 'unset';
+    const timer = isOpen
+      ? window.setTimeout(() => void fetchConversations(), 0)
+      : null;
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      document.body.style.overflow = 'unset';
+    };
+  }, [fetchConversations, isOpen]);
+
+  const handleClose = () => {
+    setSearchQuery('');
+    setSentTo(new Set());
+    setMessage('');
+    setActionError(null);
+    onClose();
   };
 
   const shareToUser = async (userId: string) => {
     try {
       setSendingTo(userId);
+      setActionError(null);
       await apiClient.post(`/reels/${reel.id}/share/chat`, {
         recipientId: userId,
         message: message || undefined,
@@ -85,7 +93,19 @@ export function ReelShareSheet({ reel, isOpen, onClose }: ReelShareSheetProps) {
       setSentTo(prev => new Set(prev).add(userId));
       setMessage('');
     } catch (error) {
-      console.error('Failed to share reel:', error);
+      const terminal = isTerminalSafetyError(error);
+      setActionError(terminal
+        ? 'Unable to share with this person.'
+        : getStructuredApiError(error).message || 'Unable to share this reel.');
+      if (terminal) {
+        setConversations((previous) => previous.filter(
+          (conversation) => conversation.otherParticipant.id !== userId
+        ));
+        setSearchUsers((previous) => previous.filter((candidate) => candidate.id !== userId));
+        window.dispatchEvent(new CustomEvent(SAFETY_STATE_CHANGED_EVENT, {
+          detail: { reason: 'interaction_policy_changed' },
+        }));
+      }
     } finally {
       setSendingTo(null);
     }
@@ -103,7 +123,7 @@ export function ReelShareSheet({ reel, isOpen, onClose }: ReelShareSheetProps) {
         shareType: 'copy_link',
       });
     } catch (error) {
-      console.error('Failed to copy link:', error);
+      setActionError(getStructuredApiError(error).message || 'Unable to copy this link.');
     }
   }, [reel.id]);
 
@@ -117,11 +137,12 @@ export function ReelShareSheet({ reel, isOpen, onClose }: ReelShareSheetProps) {
   });
 
   useEffect(() => {
-    if (!searchQuery || searchQuery.length < 2) {
-      setSearchUsers([]);
-      return;
-    }
+    const shouldSearch = Boolean(searchQuery && searchQuery.length >= 2);
     const timer = setTimeout(async () => {
+      if (!shouldSearch) {
+        setSearchUsers([]);
+        return;
+      }
       setIsSearching(true);
       try {
         const users = await searchUsersForMention(searchQuery);
@@ -131,7 +152,7 @@ export function ReelShareSheet({ reel, isOpen, onClose }: ReelShareSheetProps) {
       } finally {
         setIsSearching(false);
       }
-    }, 300);
+    }, shouldSearch ? 300 : 0);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
@@ -144,7 +165,7 @@ export function ReelShareSheet({ reel, isOpen, onClose }: ReelShareSheetProps) {
     <div className="fixed inset-0 z-[100] flex items-end justify-center">
       <div 
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={handleClose}
       />
       
       <div className="relative w-full max-w-lg bg-neutral-900 rounded-t-3xl max-h-[90dvh] flex flex-col animate-slide-up">
@@ -152,12 +173,18 @@ export function ReelShareSheet({ reel, isOpen, onClose }: ReelShareSheetProps) {
         <div className="flex items-center justify-between p-4 border-b border-white/10">
           <h2 className="text-lg font-semibold text-white">Share Reel</h2>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
           >
             <X className="w-5 h-5 text-white" />
           </button>
         </div>
+
+        {actionError && (
+          <div role="status" className="mx-4 mt-3 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            {actionError}
+          </div>
+        )}
 
         {/* Reel Preview */}
         <div className="p-4 border-b border-white/10">

@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
@@ -13,7 +13,6 @@ import {
   Phone,
   ShieldCheck,
   ShieldOff,
-  Trash2,
   UserX,
 } from 'lucide-react';
 import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth';
@@ -22,6 +21,10 @@ import { getFirebaseApp } from '@/lib/firebase';
 import { identityAPI, type IdentitySummary } from '@/lib/api/identity';
 import { reportAPI, type MyReport } from '@/lib/api/reports';
 import { safetyAPI, type UserBlock } from '@/lib/api/safety';
+import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/lib/auth/useAuth';
+import { removeUnavailableConversations, refreshSafetySensitiveQueries } from '@/lib/safety/clientCleanup';
+import { searchUsersForMention, type MentionUser } from '@/lib/api/mentions';
 
 function getErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: { error?: string; message?: string } } })?.response?.data;
@@ -67,6 +70,8 @@ function StatusPill({ active, label }: { active: boolean; label: string }) {
 }
 
 export default function SafetySettingsPage() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [identity, setIdentity] = useState<IdentitySummary | null>(null);
   const [blocks, setBlocks] = useState<UserBlock[]>([]);
   const [reports, setReports] = useState<MyReport[]>([]);
@@ -80,7 +85,10 @@ export default function SafetySettingsPage() {
   const [studentEmail, setStudentEmail] = useState('');
   const [studentCode, setStudentCode] = useState('');
   const [proofFile, setProofFile] = useState<File | null>(null);
-  const [manualBlockUserId, setManualBlockUserId] = useState('');
+  const [manualBlockQuery, setManualBlockQuery] = useState('');
+  const [manualBlockTarget, setManualBlockTarget] = useState<MentionUser | null>(null);
+  const [manualBlockResults, setManualBlockResults] = useState<MentionUser[]>([]);
+  const [manualBlockSearching, setManualBlockSearching] = useState(false);
   const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
 
   const pendingIdReview = useMemo(
@@ -88,7 +96,7 @@ export default function SafetySettingsPage() {
     [identity]
   );
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const [identityResponse, blocksResponse, reportsResponse] = await Promise.all([
       identityAPI.getMe(),
       safetyAPI.getBlocks(),
@@ -97,24 +105,55 @@ export default function SafetySettingsPage() {
     setIdentity(identityResponse.identity);
     setBlocks(blocksResponse.blocks);
     setReports(reportsResponse.reports);
-  };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    refresh()
-      .catch((err) => {
-        if (!cancelled) setError(getErrorMessage(err));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const timer = window.setTimeout(() => {
+      void refresh()
+        .catch((err) => {
+          if (!cancelled) setError(getErrorMessage(err));
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 0);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
       recaptchaRef.current?.clear();
       recaptchaRef.current = null;
     };
-  }, []);
+  }, [refresh]);
+
+  useEffect(() => {
+    const query = manualBlockQuery.trim();
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (query.length < 2 || manualBlockTarget) {
+        setManualBlockResults([]);
+        setManualBlockSearching(false);
+        return;
+      }
+      setManualBlockSearching(true);
+      void searchUsersForMention(query, 8)
+        .then((response) => {
+          if (!cancelled) {
+            setManualBlockResults(response.users.filter((candidate) => candidate.id !== user?.id));
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setManualBlockResults([]);
+        })
+        .finally(() => {
+          if (!cancelled) setManualBlockSearching(false);
+        });
+    }, query.length >= 2 ? 250 : 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [manualBlockQuery, manualBlockTarget, user?.id]);
 
   const runAction = async (key: string, action: () => Promise<string | void>) => {
     setBusy(key);
@@ -190,8 +229,19 @@ export default function SafetySettingsPage() {
   const blockManualUser = async (event: FormEvent) => {
     event.preventDefault();
     await runAction('block-user', async () => {
-      await safetyAPI.blockUser(manualBlockUserId.trim(), 'Manual block from safety settings');
-      setManualBlockUserId('');
+      if (!manualBlockTarget) throw new Error('Select a user from the search results first.');
+      const response = await safetyAPI.blockUser(manualBlockTarget.id, 'Manual block from safety settings');
+      if (user?.id) {
+        await removeUnavailableConversations({
+          queryClient,
+          ownerId: user.id,
+          conversationIds: response.effects?.affectedConversationIds ?? [],
+        });
+      }
+      await refreshSafetySensitiveQueries(queryClient, user?.id);
+      setManualBlockQuery('');
+      setManualBlockTarget(null);
+      setManualBlockResults([]);
       return 'User blocked.';
     });
   };
@@ -199,6 +249,7 @@ export default function SafetySettingsPage() {
   const unblockUser = async (userId: string) => {
     await runAction(`unblock-${userId}`, async () => {
       await safetyAPI.unblockUser(userId);
+      await refreshSafetySensitiveQueries(queryClient, user?.id);
       return 'User unblocked.';
     });
   };
@@ -371,19 +422,67 @@ export default function SafetySettingsPage() {
                   <UserX className="h-5 w-5 text-red-600" />
                   <h2 className="font-semibold text-gray-950 dark:text-white">Blocked Users</h2>
                 </div>
-                <form onSubmit={blockManualUser} className="mb-4 grid gap-3 sm:grid-cols-[1fr_auto]">
-                  <input
-                    value={manualBlockUserId}
-                    onChange={(event) => setManualBlockUserId(event.target.value)}
-                    placeholder="User ID"
-                    className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-950 outline-none focus:border-red-500 dark:border-neutral-700 dark:bg-neutral-950 dark:text-white"
-                  />
+                <form onSubmit={blockManualUser} className="mb-4 grid items-start gap-3 sm:grid-cols-[1fr_auto]">
+                  <div className="relative">
+                    <input
+                      value={manualBlockQuery}
+                      onChange={(event) => {
+                        setManualBlockQuery(event.target.value);
+                        setManualBlockTarget(null);
+                      }}
+                      placeholder="Search by name or @username"
+                      autoComplete="off"
+                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-950 outline-none focus:border-red-500 dark:border-neutral-700 dark:bg-neutral-950 dark:text-white"
+                    />
+                    {manualBlockSearching && (
+                      <Loader2 className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-gray-400" />
+                    )}
+                    {manualBlockTarget && (
+                      <p className="mt-2 text-xs text-gray-600 dark:text-neutral-300">
+                        Selected: {manualBlockTarget.name} (@{manualBlockTarget.username})
+                      </p>
+                    )}
+                    {!manualBlockTarget && manualBlockResults.length > 0 && (
+                      <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
+                        {manualBlockResults
+                          .filter((candidate) => !blocks.some((block) => block.blockedUserId === candidate.id))
+                          .map((candidate) => (
+                            <button
+                              key={candidate.id}
+                              type="button"
+                              onClick={() => {
+                                setManualBlockTarget(candidate);
+                                setManualBlockQuery(`@${candidate.username}`);
+                                setManualBlockResults([]);
+                              }}
+                              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-neutral-800"
+                            >
+                              <div className="relative h-9 w-9 flex-none overflow-hidden rounded-full bg-gray-100 dark:bg-neutral-800">
+                                {(candidate.profileImage || candidate.avatar) ? (
+                                  <Image
+                                    src={candidate.profileImage || candidate.avatar || ''}
+                                    alt=""
+                                    fill
+                                    sizes="36px"
+                                    className="object-cover"
+                                  />
+                                ) : null}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-gray-950 dark:text-white">{candidate.name}</p>
+                                <p className="truncate text-xs text-gray-500 dark:text-neutral-400">@{candidate.username}</p>
+                              </div>
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
                   <button
                     type="submit"
-                    disabled={busy === 'block-user' || !manualBlockUserId.trim()}
+                    disabled={busy === 'block-user' || !manualBlockTarget}
                     className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
                   >
-                    Block
+                    {busy === 'block-user' ? 'Blocking' : 'Block'}
                   </button>
                 </form>
                 <div className="divide-y divide-gray-100 dark:divide-neutral-800">
@@ -412,10 +511,12 @@ export default function SafetySettingsPage() {
                           type="button"
                           onClick={() => unblockUser(block.blockedUserId)}
                           disabled={busy === `unblock-${block.blockedUserId}`}
-                          className="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-red-600 disabled:opacity-50 dark:hover:bg-neutral-800"
-                          aria-label="Unblock"
+                          className="inline-flex min-w-24 items-center justify-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/30"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          {busy === `unblock-${block.blockedUserId}` && (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          )}
+                          {busy === `unblock-${block.blockedUserId}` ? 'Unblocking…' : 'Unblock'}
                         </button>
                       </div>
                     ))

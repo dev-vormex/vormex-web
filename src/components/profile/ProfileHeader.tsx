@@ -41,6 +41,7 @@ import ConnectionSentToast from '@/components/engagement/ConnectionSentToast';
 import type { ProfileUser, ProfileStats, ProfileViewerContext } from '@/types/profile';
 import { formatLocation } from '@/lib/utils/profileLocation';
 import { resolveMediaUrl } from '@/lib/utils/media';
+import { getStructuredApiError, isTerminalSafetyError } from '@/lib/api/errors';
 
 interface ProfileHeaderProps {
   user: ProfileUser;
@@ -54,6 +55,7 @@ interface ProfileHeaderProps {
     patch: Partial<ProfileViewerContext>,
     followersDelta?: number
   ) => void;
+  onProfileUnavailable?: () => void;
 }
 
 type ConnectionStatus = 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'blocked';
@@ -95,6 +97,7 @@ export function ProfileHeader({
   onEditBanner,
   onEditAvatar,
   onViewerContextChange,
+  onProfileUnavailable,
 }: ProfileHeaderProps) {
   const router = useRouter();
   const [showShareMenu, setShowShareMenu] = useState(false);
@@ -128,6 +131,15 @@ export function ProfileHeader({
   const [messageError, setMessageError] = useState<string | null>(null);
   const locationLabel = formatLocation(user.location);
   const profileImageSrc = user.avatar ?? user.profileImage ?? null;
+
+  const handleProfileActionError = useCallback((error: unknown, fallback: string) => {
+    if (isTerminalSafetyError(error)) {
+      setMessageError('This profile is unavailable.');
+      onProfileUnavailable?.();
+      return;
+    }
+    setMessageError(getStructuredApiError(error).message || fallback);
+  }, [onProfileUnavailable]);
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
@@ -171,9 +183,11 @@ export function ProfileHeader({
       setMutualInfo(await getMutualInfo(user.id));
     } catch (error) {
       mutualRequestedRef.current = false;
-      console.warn('Failed to fetch mutual profile context:', error);
+      if (isTerminalSafetyError(error)) {
+        onProfileUnavailable?.();
+      }
     }
-  }, [isOwner, user.id]);
+  }, [isOwner, onProfileUnavailable, user.id]);
 
   // Mutual lists are lower-priority. Load them only when their section nears
   // the viewport; connection/follow controls already came from core profile.
@@ -210,7 +224,7 @@ export function ProfileHeader({
       });
       setShowToast(true);
     } catch (error) {
-      console.error('Failed to send connection request:', error);
+      handleProfileActionError(error, 'Unable to send the connection request.');
     } finally {
       setLoadingConnection(false);
     }
@@ -231,7 +245,7 @@ export function ProfileHeader({
       });
       setShowConnectMenu(false);
     } catch (error) {
-      console.error('Failed to cancel request:', error);
+      handleProfileActionError(error, 'Unable to cancel the connection request.');
     } finally {
       setLoadingConnection(false);
     }
@@ -252,7 +266,7 @@ export function ProfileHeader({
       });
       setShowConnectMenu(false);
     } catch (error) {
-      console.error('Failed to remove connection:', error);
+      handleProfileActionError(error, 'Unable to remove this connection.');
     } finally {
       setLoadingConnection(false);
     }
@@ -271,7 +285,7 @@ export function ProfileHeader({
         direction: null,
       });
     } catch (error) {
-      console.error('Failed to accept request:', error);
+      handleProfileActionError(error, 'Unable to accept the connection request.');
     } finally {
       setLoadingConnection(false);
     }
@@ -291,7 +305,7 @@ export function ProfileHeader({
         onViewerContextChange?.({ isFollowing: true }, 1);
       }
     } catch (error) {
-      console.error('Failed to toggle follow:', error);
+      handleProfileActionError(error, 'Unable to update the follow state.');
     } finally {
       setLoadingFollow(false);
     }
@@ -307,7 +321,11 @@ export function ProfileHeader({
       const conversation = await getOrCreateConversation(user.id);
       router.push(`/messages/${conversation.id}`);
     } catch (error) {
-      console.error('Failed to open conversation:', error);
+      if (isTerminalSafetyError(error)) {
+        setMessageError('This profile is unavailable.');
+        onProfileUnavailable?.();
+        return;
+      }
       const apiError = error as {
         message?: string;
         response?: { data?: { message?: string; error?: string } };
@@ -315,7 +333,7 @@ export function ProfileHeader({
       setMessageError(
         apiError.response?.data?.message ||
         apiError.response?.data?.error ||
-        apiError.message ||
+        getStructuredApiError(error).message || apiError.message ||
         'Unable to open messages right now.'
       );
     } finally {
@@ -967,6 +985,7 @@ export function ProfileHeader({
             onBlocked={() => {
               setConnectionStatus('blocked');
               setIsFollowing(false);
+              onProfileUnavailable?.();
             }}
           />
         </>

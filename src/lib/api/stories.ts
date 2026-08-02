@@ -68,7 +68,7 @@ export interface StoryHighlight {
 
 export interface StoryViewer {
   id: string;
-  user: StoryAuthor;
+  user: StoryAuthor | null;
   viewedAt: string;
   duration?: number | null;
 }
@@ -127,7 +127,6 @@ export const getStoriesFeed = async (): Promise<{ storyGroups: StoryGroup[] }> =
     // apiClient interceptor already returns response.data, so this IS the data
     const response = await apiClient.get('/stories/feed');
     const data = response.data || response;
-    console.log('📖 Stories API raw response:', data);
     
     // Ensure we always return the expected structure
     if (data && Array.isArray(data.storyGroups)) {
@@ -142,7 +141,6 @@ export const getStoriesFeed = async (): Promise<{ storyGroups: StoryGroup[] }> =
     // Default empty array
     return { storyGroups: [] };
   } catch (error) {
-    console.error('📖 Stories API error:', error);
     throw error;
   }
 };
@@ -184,6 +182,7 @@ export const getStoryViewers = async (
   limit = 20
 ): Promise<{
   viewers: StoryViewer[];
+  totalCount: number;
   nextCursor: string | null;
   hasMore: boolean;
 }> => {

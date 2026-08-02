@@ -1,5 +1,6 @@
 import apiClient from './client';
 import type { PersonRelationship } from './people';
+import { safetyAPI, type BlockUserResponse, type UnblockUserResponse } from './safety';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TYPES
@@ -186,8 +187,8 @@ export async function getConnectionStatus(
  */
 export async function blockUser(
   userId: string
-): Promise<{ message: string }> {
-  return apiClient.post(`/users/${userId}/block`);
+): Promise<BlockUserResponse> {
+  return safetyAPI.blockUser(userId, 'Blocked from connection surface');
 }
 
 /**
@@ -195,8 +196,8 @@ export async function blockUser(
  */
 export async function unblockUser(
   userId: string
-): Promise<{ message: string }> {
-  return apiClient.delete(`/users/${userId}/block`);
+): Promise<UnblockUserResponse> {
+  return safetyAPI.unblockUser(userId);
 }
 
 /**

@@ -25,6 +25,8 @@ import type { Post } from '@/types/post'; // Added Post type
 import { useAuth } from '@/lib/auth/useAuth';
 import { EditPostModal } from '@/components/feed/EditPostModal';
 import { handleApiError } from '@/lib/utils/errorHandler';
+import { isTerminalSafetyError } from '@/lib/api/errors';
+import { SAFETY_STATE_CHANGED_EVENT } from '@/lib/socket';
 
 interface ProfileFeedProps {
   userId: string;
@@ -59,6 +61,18 @@ export function ProfileFeed({ userId, initialFeed }: ProfileFeedProps) {
   // Check ownership
   const isOwner = user?.id === userId;
 
+  const handleFeedError = useCallback((requestError: unknown) => {
+    const terminal = isTerminalSafetyError(requestError);
+    if (terminal) {
+      setItems([]);
+      window.dispatchEvent(new CustomEvent(SAFETY_STATE_CHANGED_EVENT, {
+        detail: { reason: 'interaction_policy_changed' },
+      }));
+    }
+    setHasMore(false);
+    setError(terminal ? 'This profile is unavailable.' : handleApiError(requestError));
+  }, []);
+
   const fetchFeed = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -68,14 +82,12 @@ export function ProfileFeed({ userId, initialFeed }: ProfileFeedProps) {
       setHasMore(response.hasMore);
       setPage(1);
     } catch (requestError) {
-      console.error('Failed to fetch feed:', requestError);
       // Stop automatic pagination attempts until the user explicitly retries.
-      setHasMore(false);
-      setError(handleApiError(requestError));
+      handleFeedError(requestError);
     } finally {
       setLoading(false);
     }
-  }, [activeTab, userId]);
+  }, [activeTab, handleFeedError, userId]);
 
   // Fetch feed when tab changes.
   useEffect(() => {
@@ -98,14 +110,12 @@ export function ProfileFeed({ userId, initialFeed }: ProfileFeedProps) {
       setHasMore(response.hasMore);
       setPage(nextPage);
     } catch (requestError) {
-      console.error('Failed to load more:', requestError);
       // A failed page remains user-retryable without re-triggering on scroll.
-      setHasMore(false);
-      setError(handleApiError(requestError));
+      handleFeedError(requestError);
     } finally {
       setLoadingMore(false);
     }
-  }, [userId, page, activeTab, hasMore, loadingMore]);
+  }, [userId, page, activeTab, hasMore, handleFeedError, loadingMore]);
 
   const handleDelete = async (itemId: string, contentType: string) => {
     if (!window.confirm('Are you sure you want to delete this?')) return;

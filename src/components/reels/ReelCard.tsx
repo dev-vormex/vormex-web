@@ -4,7 +4,6 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Heart } from 'lucide-react';
 import { useAuthContext } from '@/lib/auth/authContext';
-import { cn } from '@/lib/utils';
 import { ReelPlayer } from './ReelPlayer';
 import { ReelActions } from './ReelActions';
 import { ReelInfo } from './ReelInfo';
@@ -18,11 +17,12 @@ import { reelsApi, Reel } from '@/lib/api/reels';
 interface ReelCardProps {
   reel: Reel;
   isActive: boolean;
+  shouldPreload?: boolean;
   isMuted: boolean;
   onMuteToggle: () => void;
 }
 
-export function ReelCard({ reel, isActive, isMuted, onMuteToggle }: ReelCardProps) {
+export function ReelCard({ reel, isActive, shouldPreload = false, isMuted, onMuteToggle }: ReelCardProps) {
   const router = useRouter();
   const { user } = useAuthContext();
   const isAuthor = user?.id === reel.author.id;
@@ -32,10 +32,6 @@ export function ReelCard({ reel, isActive, isMuted, onMuteToggle }: ReelCardProp
   const [localReel, setLocalReel] = useState(reel);
   const viewTracked = useRef(false);
   const watchStartTime = useRef<number | null>(null);
-
-  useEffect(() => {
-    setLocalReel(reel);
-  }, [reel]);
 
   useEffect(() => {
     if (isActive && !viewTracked.current) {
@@ -140,12 +136,12 @@ export function ReelCard({ reel, isActive, isMuted, onMuteToggle }: ReelCardProp
         mp4Url={reel.videoUrl}
         thumbnailUrl={reel.thumbnailUrl}
         isActive={isActive}
+        shouldPreload={shouldPreload}
         isMuted={isMuted}
         onProgress={handleProgress}
         onComplete={handleComplete}
         onTap={handleTap}
         onDoubleTap={handleDoubleTap}
-        onMuteToggle={onMuteToggle}
       />
 
       {showHeart && (
@@ -156,30 +152,32 @@ export function ReelCard({ reel, isActive, isMuted, onMuteToggle }: ReelCardProp
         </div>
       )}
 
-      <div className="absolute bottom-0 left-0 right-0 p-4 pb-24 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
-        <div className="flex items-end justify-between gap-4">
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/55 to-transparent px-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))] pt-28 sm:p-4 sm:pb-24 sm:pt-32">
+        <div className="pr-14 sm:pr-16">
           <ReelInfo
             reel={localReel}
             onHashtagClick={handleHashtagClick}
             onAudioClick={handleAudioClick}
           />
-
-          <ReelActions
-            reel={localReel}
-            isMuted={isMuted}
-            onMuteToggle={onMuteToggle}
-            onCommentClick={handleCommentClick}
-            onShareClick={handleShareClick}
-            onLikeUpdate={handleLikeUpdate}
-            onSaveUpdate={handleSaveUpdate}
-            onDelete={handleDelete}
-            isAuthor={isAuthor}
-          />
         </div>
       </div>
 
+      <div className="absolute right-2.5 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-10 sm:right-4 sm:bottom-24">
+        <ReelActions
+          reel={localReel}
+          isMuted={isMuted}
+          onMuteToggle={onMuteToggle}
+          onCommentClick={handleCommentClick}
+          onShareClick={handleShareClick}
+          onLikeUpdate={handleLikeUpdate}
+          onSaveUpdate={handleSaveUpdate}
+          onDelete={handleDelete}
+          isAuthor={isAuthor}
+        />
+      </div>
+
       {localReel.pollQuestion && localReel.pollOptions && (
-        <div className="absolute top-1/2 left-4 right-20 -translate-y-1/2">
+        <div className="absolute left-3 right-16 top-1/2 -translate-y-1/2 sm:left-4 sm:right-20">
           <ReelPoll
             reelId={reel.id}
             question={localReel.pollQuestion}
@@ -191,7 +189,7 @@ export function ReelCard({ reel, isActive, isMuted, onMuteToggle }: ReelCardProp
       )}
 
       {localReel.quizQuestion && localReel.quizOptions && (
-        <div className="absolute top-1/2 left-4 right-20 -translate-y-1/2">
+        <div className="absolute left-3 right-16 top-1/2 -translate-y-1/2 sm:left-4 sm:right-20">
           <ReelQuiz
             reelId={reel.id}
             question={localReel.quizQuestion}
@@ -201,7 +199,7 @@ export function ReelCard({ reel, isActive, isMuted, onMuteToggle }: ReelCardProp
       )}
 
       {localReel.codeSnippet && (
-        <div className="absolute top-20 left-4 right-20 max-h-[40vh] overflow-auto">
+        <div className="absolute left-3 right-16 top-20 max-h-[38dvh] overflow-auto sm:left-4 sm:right-20">
           <ReelCodeSnippet
             code={localReel.codeSnippet}
             language={localReel.codeLanguage}

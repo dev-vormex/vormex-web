@@ -442,8 +442,8 @@ export function Feed() {
     <>
       {/* Header */}
       <div className="sticky top-0 z-40 w-full border-b border-gray-200/70 bg-white/75 backdrop-blur-xl dark:border-neutral-800/80 dark:bg-neutral-950/75">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-3 py-2.5 sm:px-4 sm:py-3">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <div className="flex items-center gap-2.5">
               <Image
                 src="/logo.png"
@@ -451,25 +451,25 @@ export function Feed() {
                 width={40}
                 height={40}
                 priority
-                className="h-10 w-10 rounded-xl object-contain"
+                className="h-8 w-8 rounded-lg object-contain sm:h-10 sm:w-10 sm:rounded-xl"
               />
-              <span className="text-lg font-bold tracking-tight text-gray-950 dark:text-white">
+              <span className="text-base font-bold tracking-tight text-gray-950 dark:text-white sm:text-lg">
                 Vormex
               </span>
             </div>
-            {user && <SocialProofBar />}
+            {user && <div className="hidden min-[430px]:block"><SocialProofBar /></div>}
           </div>
           {user && <StreakCounter />}
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl pb-24">
+      <div className="mx-auto max-w-6xl pb-20 sm:pb-24">
       {user && (
         <motion.section
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.25 }}
-          className="mx-4 mt-4 overflow-hidden rounded-[28px] border border-gray-200/80 bg-white/80 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.45)] backdrop-blur-md dark:border-neutral-800/70 dark:bg-neutral-900/80"
+          className="mt-2 overflow-hidden border-y border-gray-200/80 bg-white/80 shadow-[0_16px_40px_-36px_rgba(15,23,42,0.4)] backdrop-blur-md sm:mx-4 sm:mt-4 sm:rounded-[28px] sm:border sm:shadow-[0_20px_60px_-40px_rgba(15,23,42,0.45)] dark:border-neutral-800/70 dark:bg-neutral-900/80"
         >
           <StoryCarousel
             onOpenStory={handleOpenStory}
@@ -490,55 +490,55 @@ export function Feed() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.25, delay: 0.04 }}
-          className="m-4"
+          className="my-2 sm:m-4"
         >
-          <div className="overflow-hidden rounded-[28px] border border-gray-200/80 bg-white/85 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.45)] backdrop-blur-md dark:border-neutral-800/80 dark:bg-neutral-900/85">
+          <div className="overflow-hidden border-y border-gray-200/80 bg-white/85 shadow-[0_16px_40px_-36px_rgba(15,23,42,0.4)] backdrop-blur-md sm:rounded-[28px] sm:border sm:shadow-[0_20px_60px_-40px_rgba(15,23,42,0.45)] dark:border-neutral-800/80 dark:bg-neutral-900/85">
             {/* Main input area */}
             <button
               onClick={() => setShowCreateModal(true)}
-              className="w-full p-5 text-left transition-colors hover:bg-gray-50/90 dark:hover:bg-neutral-800/60"
+              className="w-full p-3 text-left transition-colors hover:bg-gray-50/90 sm:p-5 dark:hover:bg-neutral-800/60"
             >
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3 sm:gap-4">
                 <UserAvatar
                   imageSrc={user.profileImage}
                   name={user.name}
-                  className="h-14 w-14 flex-shrink-0 bg-gray-200 text-xl font-bold text-gray-500 dark:bg-neutral-700"
-                  fallbackClassName="text-xl"
+                  className="h-10 w-10 flex-shrink-0 bg-gray-200 text-base font-bold text-gray-500 sm:h-14 sm:w-14 sm:text-xl dark:bg-neutral-700"
+                  fallbackClassName="text-base sm:text-xl"
                 />
-                <div className="flex-1 py-3 px-5 rounded-full border border-gray-300 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800/50">
-                  <span className="text-gray-500 dark:text-neutral-400 text-base">What&apos;s on your mind, {user.name?.split(' ')[0]}?</span>
+                <div className="min-w-0 flex-1 rounded-full border border-gray-300 bg-gray-50 px-4 py-2.5 sm:px-5 sm:py-3 dark:border-neutral-700 dark:bg-neutral-800/50">
+                  <span className="block truncate text-sm text-gray-500 sm:text-base dark:text-neutral-400">What&apos;s on your mind, {user.name?.split(' ')[0]}?</span>
                 </div>
               </div>
             </button>
             
             {/* Action buttons */}
-            <div className="flex items-center justify-around border-t border-gray-100 dark:border-neutral-800 px-4 py-3">
+            <div className="flex items-center justify-around border-t border-gray-100 px-2 py-2 sm:px-4 sm:py-3 dark:border-neutral-800">
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors text-gray-600 dark:text-neutral-400"
+                className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-gray-600 transition-colors hover:bg-gray-100 sm:gap-2 sm:px-4 dark:text-neutral-400 dark:hover:bg-neutral-800"
               >
-                <svg className="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="h-5 w-5 text-blue-500 sm:h-6 sm:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                <span className="text-sm font-medium">Photo</span>
+                <span className="text-xs font-medium sm:text-sm">Photo</span>
               </button>
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors text-gray-600 dark:text-neutral-400"
+                className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-gray-600 transition-colors hover:bg-gray-100 sm:gap-2 sm:px-4 dark:text-neutral-400 dark:hover:bg-neutral-800"
               >
-                <svg className="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="h-5 w-5 text-green-500 sm:h-6 sm:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
-                <span className="text-sm font-medium">Video</span>
+                <span className="text-xs font-medium sm:text-sm">Video</span>
               </button>
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors text-gray-600 dark:text-neutral-400"
+                className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-gray-600 transition-colors hover:bg-gray-100 sm:gap-2 sm:px-4 dark:text-neutral-400 dark:hover:bg-neutral-800"
               >
-                <svg className="w-6 h-6 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="h-5 w-5 text-orange-500 sm:h-6 sm:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <span className="text-sm font-medium">Article</span>
+                <span className="text-xs font-medium sm:text-sm">Article</span>
               </button>
             </div>
           </div>
@@ -564,14 +564,14 @@ export function Feed() {
 
           {/* Connection Limit Notice */}
           {user && (
-            <div className="px-4 lg:px-0 mb-3">
+            <div className="mb-3 px-3 sm:px-4 lg:px-0">
               <ConnectionLimitBanner />
             </div>
           )}
 
           {/* Skeleton Loading */}
           {loading && (
-            <div className="space-y-4 px-4 lg:px-0">
+            <div className="space-y-3 px-0 sm:space-y-4 sm:px-4 lg:px-0">
               {Array.from({ length: 4 }).map((_, i) => (
                 <PostCardSkeleton key={i} />
               ))}
@@ -600,7 +600,7 @@ export function Feed() {
           )}
 
           {/* Posts List with Interleaved Widgets */}
-          <div className="space-y-4 px-4 lg:px-0">
+          <div className="space-y-3 px-0 sm:space-y-4 sm:px-4 lg:px-0">
             <AnimatePresence>
               {posts.map((post, index) => (
                 <React.Fragment key={post.id}>

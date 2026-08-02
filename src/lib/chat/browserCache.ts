@@ -245,3 +245,39 @@ export function clearChatBrowserCache(): void {
     }
   }
 }
+
+export function evictCachedConversations(
+  userId: string | undefined | null,
+  conversationIds: string[]
+): void {
+  if (!userId || conversationIds.length === 0) return;
+  const unavailableIds = new Set(conversationIds);
+  const cacheStorage = storage();
+  if (!cacheStorage) return;
+
+  const cachedList = readCachedConversations(userId);
+  if (cachedList) {
+    writeCachedConversations(userId, {
+      ...cachedList.value,
+      conversations: cachedList.value.conversations.filter(
+        (conversation) => !unavailableIds.has(conversation.id)
+      ),
+    });
+  }
+
+  unavailableIds.forEach((conversationId) => {
+    const messageKey = messagesKey(userId, conversationId);
+    const timer = pendingMessageWriteTimers.get(messageKey);
+    if (timer) clearTimeout(timer);
+    pendingMessageWriteTimers.delete(messageKey);
+    pendingMessageWrites.delete(messageKey);
+    cacheStorage.removeItem(conversationKey(userId, conversationId));
+    cacheStorage.removeItem(messageKey);
+    try {
+      window.localStorage.removeItem(conversationKey(userId, conversationId));
+      window.localStorage.removeItem(messageKey);
+    } catch {
+      // Best-effort cleanup when persistent browser storage is restricted.
+    }
+  });
+}

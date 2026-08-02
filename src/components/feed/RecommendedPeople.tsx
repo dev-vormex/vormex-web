@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { matchingAPI, type SmartMatch } from '@/lib/api/matching';
-import { Zap, ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { useAuth } from '@/lib/auth/useAuth';
 import {
@@ -53,13 +53,13 @@ export function RecommendedPeople() {
 
   if (isLoading && matches.length === 0) {
     return (
-      <div className="px-4 py-3">
-        <div className="flex items-center justify-between mb-3">
+      <div className="px-3 py-2.5 sm:px-4">
+        <div className="mb-2 flex items-center justify-between">
           <div className="h-4 w-32 bg-gray-200 dark:bg-neutral-800 rounded animate-pulse" />
         </div>
-        <div className="flex gap-3 overflow-hidden">
+        <div className="flex gap-2.5 overflow-hidden sm:gap-3">
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="flex-shrink-0 w-[140px] h-[160px] rounded-2xl bg-gray-100 dark:bg-neutral-900 animate-pulse" />
+            <div key={i} className="h-[134px] w-[128px] flex-shrink-0 animate-pulse rounded-xl bg-gray-100 dark:bg-neutral-900" />
           ))}
         </div>
       </div>
@@ -69,23 +69,18 @@ export function RecommendedPeople() {
   if (matches.length === 0) return null;
 
   return (
-    <div className="py-4">
-      <div className="flex items-center justify-between px-4 mb-3">
-        <div className="flex items-center gap-2">
-          <span className="w-6 h-6 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
-            <Zap className="w-3.5 h-3.5 text-blue-500" />
-          </span>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">People like you</h3>
-        </div>
+    <div className="py-3">
+      <div className="mb-2 flex items-center justify-between px-3 sm:px-4">
+        <h3 className="text-[13px] font-semibold text-gray-900 sm:text-sm dark:text-white">People like you</h3>
         <button
           onClick={() => router.push('/find-people')}
-          className="flex items-center gap-0.5 px-2.5 py-1 rounded-full text-xs text-blue-600 dark:text-blue-400 font-medium hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+          className="flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-medium text-blue-600 transition-colors hover:bg-blue-50 sm:text-xs dark:text-blue-400 dark:hover:bg-blue-900/20"
         >
           See all <ChevronRight className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      <div className="flex gap-3 overflow-x-auto px-4 pb-1 scrollbar-hide">
+      <div className="scrollbar-hide flex gap-2.5 overflow-x-auto px-3 pb-1 sm:gap-3 sm:px-4">
         {matches.map((match, i) => {
           const strongMatch = match.matchPercentage >= 60;
           return (
@@ -95,10 +90,10 @@ export function RecommendedPeople() {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: i * 0.04 }}
               onClick={() => router.push(`/profile/${match.user.username}`)}
-              className="flex-shrink-0 w-[150px] flex flex-col items-center bg-white dark:bg-neutral-900 rounded-2xl border border-gray-100 dark:border-neutral-800 px-3 pt-4 pb-3.5 cursor-pointer hover:shadow-md hover:border-gray-200 dark:hover:border-neutral-700 hover:-translate-y-0.5 transition-all"
+              className="flex w-[128px] flex-shrink-0 cursor-pointer flex-col items-center rounded-xl border border-gray-100 bg-white px-2 pb-2.5 pt-3 transition-all hover:-translate-y-0.5 hover:border-gray-200 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700"
             >
               <div
-                className={`w-[68px] h-[68px] rounded-full p-[2px] ${
+                className={`h-14 w-14 rounded-full p-[2px] ${
                   strongMatch
                     ? 'bg-gradient-to-br from-emerald-400 to-green-500'
                     : 'bg-gradient-to-br from-blue-400 to-indigo-500'
@@ -107,30 +102,30 @@ export function RecommendedPeople() {
                 <UserAvatar
                   imageSrc={match.user.profileImage}
                   name={match.user.name}
-                  className="h-full w-full border-2 border-white bg-gray-100 text-xl font-bold text-gray-400 dark:border-neutral-900 dark:bg-neutral-800"
-                  fallbackClassName="text-xl font-bold"
+                  className="h-full w-full border-2 border-white bg-gray-100 text-base font-bold text-gray-400 dark:border-neutral-900 dark:bg-neutral-800"
+                  fallbackClassName="text-base font-bold"
                 />
               </div>
 
               <span
-                className={`-mt-2 z-10 px-2 py-[3px] rounded-full text-[10px] font-bold text-white shadow-sm ${
+                className={`z-10 -mt-2 rounded-full px-1.5 py-0.5 text-[9px] font-bold text-white shadow-sm ${
                   strongMatch ? 'bg-green-500' : 'bg-blue-500'
                 }`}
               >
                 {match.matchPercentage}% match
               </span>
 
-              <p className="mt-2 w-full text-[13px] font-semibold text-gray-900 dark:text-white text-center truncate">
+              <p className="mt-1.5 w-full truncate text-center text-xs font-semibold text-gray-900 dark:text-white">
                 {match.user.name}
               </p>
               {(match.user.college || match.user.headline) && (
-                <p className="w-full text-[11px] text-gray-500 dark:text-neutral-500 text-center truncate mt-0.5">
+                <p className="mt-0.5 w-full truncate text-center text-[10px] text-gray-500 dark:text-neutral-500">
                   {match.user.college || match.user.headline}
                 </p>
               )}
 
               {match.reasons[0] && (
-                <span className="mt-2 max-w-full px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[10px] font-medium truncate">
+                <span className="mt-1.5 max-w-full truncate rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-medium text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
                   {match.reasons[0]}
                 </span>
               )}

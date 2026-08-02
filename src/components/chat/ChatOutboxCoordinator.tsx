@@ -18,6 +18,7 @@ import {
   writeCachedConversations,
 } from '@/lib/chat/browserCache';
 import { queryKeys } from '@/lib/queryKeys';
+import { removeUnavailableConversations } from '@/lib/safety/clientCleanup';
 import { onForegroundMessage } from '@/lib/firebase';
 
 export const CHAT_SYNC_EVENT = 'vormex:chat-sync';
@@ -40,7 +41,17 @@ export default function ChatOutboxCoordinator() {
   const applySyncResponse = useCallback((response: ChatSyncResponse) => {
     if (!user?.id) return;
 
-    const changedMessages = [...response.messages, ...response.statusChanges];
+    const unavailableIds = new Set(response.unavailableConversationIds ?? []);
+    if (unavailableIds.size > 0) {
+      void removeUnavailableConversations({
+        queryClient,
+        ownerId: user.id,
+        conversationIds: Array.from(unavailableIds),
+      });
+    }
+
+    const changedMessages = [...response.messages, ...response.statusChanges]
+      .filter((message) => !unavailableIds.has(message.conversationId));
     changedMessages.forEach((message) => {
       appendMessageToConversationCache(queryClient, user.id, message.conversationId, message);
     });
@@ -52,7 +63,9 @@ export default function ChatOutboxCoordinator() {
         readCachedConversations(user.id)?.value ??
         { conversations: [], hasMore: false };
       const conversationMap = new Map(
-        cachedResponse.conversations.map((conversation) => [conversation.id, conversation])
+        cachedResponse.conversations
+          .filter((conversation) => !unavailableIds.has(conversation.id))
+          .map((conversation) => [conversation.id, conversation])
       );
       response.conversations.forEach((conversation) => {
         conversationMap.set(conversation.id, conversation);

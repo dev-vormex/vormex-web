@@ -6,8 +6,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth/useAuth';
 import { ChatMessages, ChatInput, ChatHeader, type UploadingMessage, type OptimisticMessage } from '@/components/chat';
 import ChatSettingsPanel from '@/components/chat/ChatSettingsPanel';
+import { BlockUserModal } from '@/components/ui/BlockUserModal';
 import { getConversation, type Conversation, type ConversationsResponse, type Message } from '@/lib/api/chat';
-import { initializeSocket } from '@/lib/socket';
+import { initializeSocket, SAFETY_STATE_CHANGED_EVENT } from '@/lib/socket';
 import * as storeAPI from '@/lib/api/store';
 import {
   readCachedConversation,
@@ -22,12 +23,15 @@ import {
 import { CHAT_STALE_TIME, queryKeys } from '@/lib/queryKeys';
 import {
   CHAT_MESSAGE_CONFIRMED_EVENT,
+  CHAT_OUTBOX_REMOVED_EVENT,
   CHAT_OUTBOX_UPDATED_EVENT,
   drainChatOutbox,
   listChatOutboxEntries,
   retryChatOutboxEntry,
   type ChatOutboxEntry,
 } from '@/lib/chat/outbox';
+import { removeUnavailableConversations } from '@/lib/safety/clientCleanup';
+import { isTerminalSafetyError } from '@/lib/api/errors';
 
 interface ConversationPageProps {
   params: Promise<{ conversationId: string }>;
@@ -59,6 +63,7 @@ export default function ConversationPage({ params }: ConversationPageProps) {
   const conversationId = resolvedParams.conversationId;
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showBlockModal, setShowBlockModal] = useState(false);
   const [wallpapersByConversation, setWallpapersByConversation] = useState<Record<string, string>>({});
   const [uploadingMessagesByConversation, setUploadingMessagesByConversation] = useState<Record<string, UploadingMessage[]>>({});
   const [optimisticMessagesByConversation, setOptimisticMessagesByConversation] = useState<Record<string, OptimisticMessage[]>>({});
@@ -106,6 +111,7 @@ export default function ConversationPage({ params }: ConversationPageProps) {
     isLoading,
     isError,
     error,
+    refetch,
   } = useQuery<Conversation>({
     queryKey: conversationQueryKey,
     queryFn: async () => {
@@ -227,6 +233,15 @@ export default function ConversationPage({ params }: ConversationPageProps) {
         handleOptimisticMessageResolved(detail.message.clientMessageId);
       }
     };
+    const handleOutboxRemoved = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        conversationId: string;
+        clientMessageId: string;
+      }>).detail;
+      if (detail?.conversationId === conversationId && detail.clientMessageId) {
+        handleOptimisticMessageResolved(detail.clientMessageId);
+      }
+    };
 
     void listChatOutboxEntries(user.id)
       .then((entries) => entries.forEach(applyOutboxEntry))
@@ -235,9 +250,11 @@ export default function ConversationPage({ params }: ConversationPageProps) {
 
     window.addEventListener(CHAT_OUTBOX_UPDATED_EVENT, handleOutboxUpdated);
     window.addEventListener(CHAT_MESSAGE_CONFIRMED_EVENT, handleMessageConfirmed);
+    window.addEventListener(CHAT_OUTBOX_REMOVED_EVENT, handleOutboxRemoved);
     return () => {
       window.removeEventListener(CHAT_OUTBOX_UPDATED_EVENT, handleOutboxUpdated);
       window.removeEventListener(CHAT_MESSAGE_CONFIRMED_EVENT, handleMessageConfirmed);
+      window.removeEventListener(CHAT_OUTBOX_REMOVED_EVENT, handleOutboxRemoved);
     };
   }, [
     conversationId,
@@ -300,6 +317,32 @@ export default function ConversationPage({ params }: ConversationPageProps) {
       initializeSocket();
     }
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const closeUnavailableConversation = async () => {
+      await removeUnavailableConversations({
+        queryClient,
+        ownerId: user.id,
+        conversationIds: [conversationId],
+      });
+      router.replace('/messages?notice=conversation_unavailable');
+    };
+    const handleSafetyStateChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ affectedConversationIds?: string[] }>).detail;
+      if (detail?.affectedConversationIds?.includes(conversationId)) {
+        void closeUnavailableConversation();
+        return;
+      }
+      void refetch().then((result) => {
+        if (result.error && isTerminalSafetyError(result.error)) {
+          void closeUnavailableConversation();
+        }
+      });
+    };
+    window.addEventListener(SAFETY_STATE_CHANGED_EVENT, handleSafetyStateChanged);
+    return () => window.removeEventListener(SAFETY_STATE_CHANGED_EVENT, handleSafetyStateChanged);
+  }, [conversationId, queryClient, refetch, router, user?.id]);
 
   useEffect(() => {
     if (!conversation || !user?.id) return;
@@ -403,6 +446,21 @@ export default function ConversationPage({ params }: ConversationPageProps) {
         onWallpaperChange={handleWallpaperChange}
         ownedThemePacks={chatCustomization.ownedThemePacks}
         onOpenStore={() => router.push('/store')}
+        onBlockUser={() => {
+          setShowSettings(false);
+          setShowBlockModal(true);
+        }}
+      />
+      <BlockUserModal
+        isOpen={showBlockModal}
+        onClose={() => setShowBlockModal(false)}
+        userId={otherUser.id}
+        userName={otherUser.name}
+        userImage={otherUser.profileImage}
+        onBlocked={() => {
+          setShowBlockModal(false);
+          router.replace('/messages?notice=conversation_unavailable');
+        }}
       />
     </>
   );

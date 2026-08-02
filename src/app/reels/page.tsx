@@ -21,17 +21,17 @@ export default function ReelsPage() {
   }, [router]);
 
   return (
-    <div className="relative min-h-screen w-full bg-black">
-      <div className="absolute top-0 left-0 right-0 z-20 pt-4 px-4 pb-2 bg-gradient-to-b from-black/80 to-transparent">
-        <div className="flex items-center justify-between max-w-lg mx-auto">
-          <h1 className="text-white text-xl font-bold">Reels</h1>
+    <div className="relative min-h-[100dvh] w-full bg-black">
+      <div className="absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-black/85 via-black/45 to-transparent px-3 pb-8 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4 sm:pb-10 sm:pt-4">
+        <div className="relative mx-auto flex max-w-lg items-center justify-center sm:justify-between">
+          <h1 className="hidden text-xl font-bold text-white sm:block">Reels</h1>
           
-          <div className="flex items-center gap-3">
-            <div className="flex bg-white/10 rounded-full p-1">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex rounded-full border border-white/10 bg-black/35 p-0.5 backdrop-blur-md sm:p-1">
               <button
                 onClick={() => setMode('foryou')}
                 className={cn(
-                  "px-4 py-1.5 rounded-full text-sm font-medium transition-colors",
+                  "rounded-full px-4 py-2 text-[13px] font-semibold transition-colors sm:py-1.5 sm:text-sm",
                   mode === 'foryou'
                     ? "bg-white text-black"
                     : "text-white hover:text-white/80"
@@ -42,7 +42,7 @@ export default function ReelsPage() {
               <button
                 onClick={() => setMode('following')}
                 className={cn(
-                  "px-4 py-1.5 rounded-full text-sm font-medium transition-colors",
+                  "rounded-full px-4 py-2 text-[13px] font-semibold transition-colors sm:py-1.5 sm:text-sm",
                   mode === 'following'
                     ? "bg-white text-black"
                     : "text-white hover:text-white/80"
@@ -52,34 +52,40 @@ export default function ReelsPage() {
               </button>
             </div>
             
-            <button
-              onClick={handleTrendingClick}
-              className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
-              title="Trending"
-            >
-              <Compass className="w-5 h-5 text-white" />
-            </button>
-            <button
-              onClick={() => router.push('/reels/analytics')}
-              className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
-              title="Analytics"
-            >
-              <BarChart3 className="w-5 h-5 text-white" />
-            </button>
-            <button
-              onClick={() => router.push('/reels/drafts')}
-              className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
-              title="Drafts"
-            >
-              <FileVideo className="w-5 h-5 text-white" />
-            </button>
-            <button
-              onClick={handleCreateClick}
-              className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center hover:bg-blue-600 transition-colors"
-              title="Create Reel"
-            >
-              <Plus className="w-5 h-5 text-white" />
-            </button>
+            <div className="absolute right-0 top-10 flex items-center gap-1 sm:static sm:gap-3">
+              <button
+                onClick={handleTrendingClick}
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md transition-colors hover:bg-white/20 sm:h-10 sm:w-10"
+                title="Trending"
+                aria-label="Trending reels"
+              >
+                <Compass className="h-3.5 w-3.5 text-white sm:h-5 sm:w-5" />
+              </button>
+              <button
+                onClick={() => router.push('/reels/analytics')}
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md transition-colors hover:bg-white/20 sm:h-10 sm:w-10"
+                title="Analytics"
+                aria-label="Reels analytics"
+              >
+                <BarChart3 className="h-3.5 w-3.5 text-white sm:h-5 sm:w-5" />
+              </button>
+              <button
+                onClick={() => router.push('/reels/drafts')}
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md transition-colors hover:bg-white/20 sm:h-10 sm:w-10"
+                title="Drafts"
+                aria-label="Reel drafts"
+              >
+                <FileVideo className="h-3.5 w-3.5 text-white sm:h-5 sm:w-5" />
+              </button>
+              <button
+                onClick={handleCreateClick}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-500 transition-colors hover:bg-blue-600 sm:h-10 sm:w-10"
+                title="Create Reel"
+                aria-label="Create reel"
+              >
+                <Plus className="h-3.5 w-3.5 text-white sm:h-5 sm:w-5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>

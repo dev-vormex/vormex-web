@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, Play, Lock } from 'lucide-react';
 import Image from 'next/image';
 import { getUserHighlights, getHighlightStories, type StoryHighlight, type Story } from '@/lib/api/stories';
+import { isTerminalSafetyError } from '@/lib/api/errors';
+import { SAFETY_STATE_CHANGED_EVENT } from '@/lib/socket';
 
 interface StoryHighlightsProps {
   userId: string;
@@ -18,20 +20,26 @@ export function StoryHighlights({ userId, isOwnProfile = false, onCreateHighligh
   const [selectedHighlight, setSelectedHighlight] = useState<StoryHighlight | null>(null);
   const [highlightStories, setHighlightStories] = useState<Story[]>([]);
 
-  useEffect(() => {
-    fetchHighlights();
-  }, [userId]);
-
-  const fetchHighlights = async () => {
+  const fetchHighlights = useCallback(async () => {
     try {
       const response = await getUserHighlights(userId);
       setHighlights(response.highlights);
     } catch (error) {
-      console.error('Error fetching highlights:', error);
+      setHighlights([]);
+      if (isTerminalSafetyError(error)) {
+        window.dispatchEvent(new CustomEvent(SAFETY_STATE_CHANGED_EVENT, {
+          detail: { reason: 'interaction_policy_changed' },
+        }));
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void fetchHighlights(), 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchHighlights]);
 
   const handleHighlightClick = async (highlight: StoryHighlight) => {
     setSelectedHighlight(highlight);
@@ -40,7 +48,13 @@ export function StoryHighlights({ userId, isOwnProfile = false, onCreateHighligh
       setHighlightStories(response.highlight.stories);
       // Open story viewer with these stories
     } catch (error) {
-      console.error('Error fetching highlight stories:', error);
+      setSelectedHighlight(null);
+      setHighlightStories([]);
+      if (isTerminalSafetyError(error)) {
+        window.dispatchEvent(new CustomEvent(SAFETY_STATE_CHANGED_EVENT, {
+          detail: { reason: 'interaction_policy_changed' },
+        }));
+      }
     }
   };
 

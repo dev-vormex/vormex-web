@@ -7,7 +7,7 @@ import { checkUserStatus, getSocket, initializeSocket } from '@/lib/socket';
 import ReportModal from '@/components/reports/ReportModal';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
-import { MoreVertical, Flag, ArrowLeft, Phone, Video, Info } from 'lucide-react';
+import { MoreVertical, Flag, ArrowLeft, Info } from 'lucide-react';
 
 interface ChatHeaderProps {
   user: {
@@ -170,24 +170,6 @@ export default function ChatHeader({ user, conversationId, onBack, onInfo }: Cha
 
       {/* Action buttons */}
       <div className="flex items-center gap-1">
-        {/* Voice call (future) */}
-        <button
-          className="p-2 rounded-full text-gray-400 dark:text-neutral-600 cursor-not-allowed"
-          title="Voice call (coming soon)"
-          disabled
-        >
-          <Phone className="w-5 h-5" />
-        </button>
-
-        {/* Video call (future) */}
-        <button
-          className="p-2 rounded-full text-gray-400 dark:text-neutral-600 cursor-not-allowed"
-          title="Video call (coming soon)"
-          disabled
-        >
-          <Video className="w-5 h-5" />
-        </button>
-
         {/* Info button */}
         {onInfo && (
           <button

@@ -5,6 +5,7 @@ import {
   isChatSocketReady,
   sendChatMessage as sendRealtimeChatMessage,
 } from '@/lib/socket';
+import { isTerminalSafetyError } from '@/lib/api/errors';
 
 const DATABASE_NAME = 'vormex-chat-outbox';
 const DATABASE_VERSION = 1;
@@ -15,6 +16,7 @@ const MAX_RETRY_DELAY_MS = 30_000;
 
 export const CHAT_OUTBOX_UPDATED_EVENT = 'vormex:chat-outbox-updated';
 export const CHAT_MESSAGE_CONFIRMED_EVENT = 'vormex:chat-message-confirmed';
+export const CHAT_OUTBOX_REMOVED_EVENT = 'vormex:chat-outbox-removed';
 
 export type ChatOutboxStatus = 'pending' | 'sending' | 'failed';
 
@@ -121,6 +123,17 @@ function dispatchConfirmedMessage(entry: ChatOutboxEntry, message: Message): voi
   }));
 }
 
+function dispatchRemovedEntry(entry: ChatOutboxEntry, reason: string): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(CHAT_OUTBOX_REMOVED_EVENT, {
+    detail: {
+      clientMessageId: entry.clientMessageId,
+      conversationId: entry.conversationId,
+      reason,
+    },
+  }));
+}
+
 function shouldFallbackToRestSend(error: unknown): boolean {
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
   return (
@@ -179,6 +192,21 @@ export async function clearChatOutbox(ownerId: string | undefined | null): Promi
   await Promise.allSettled(
     entries.map((entry) => deleteChatOutboxEntry(entry.clientMessageId))
   );
+}
+
+export async function clearConversationChatOutbox(
+  ownerId: string | undefined | null,
+  conversationIds: string[]
+): Promise<void> {
+  if (!ownerId || conversationIds.length === 0) return;
+  const unavailableIds = new Set(conversationIds);
+  const entries = await listChatOutboxEntries(ownerId).catch(() => []);
+  await Promise.all(entries
+    .filter((entry) => unavailableIds.has(entry.conversationId))
+    .map(async (entry) => {
+      await deleteChatOutboxEntry(entry.clientMessageId);
+      dispatchRemovedEntry(entry, 'resource_unavailable');
+    }));
 }
 
 async function sendEntry(entry: ChatOutboxEntry, onUploadProgress?: (progress: number) => void): Promise<Message> {
@@ -260,6 +288,11 @@ export async function attemptChatOutboxEntry(
       dispatchConfirmedMessage(sendingEntry, message);
       return message;
     } catch (error) {
+      if (isTerminalSafetyError(error)) {
+        await deleteChatOutboxEntry(clientMessageId);
+        dispatchRemovedEntry(sendingEntry, 'resource_unavailable');
+        throw error;
+      }
       const failedEntry: ChatOutboxEntry = {
         ...(await getChatOutboxEntry(clientMessageId) ?? sendingEntry),
         status: 'failed',

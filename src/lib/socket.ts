@@ -17,6 +17,7 @@ const CHAT_SEND_ACK_TIMEOUT_MS = 3000;
 const SOCKET_TICKET_REFRESH_SKEW_MS = 10_000;
 const DELIVERED_ACK_CACHE_LIMIT = 200;
 const acknowledgedDeliveredMessageIds = new Set<string>();
+export const SAFETY_STATE_CHANGED_EVENT = 'vormex:safety-state-changed';
 let cachedSocketTicket: SocketTicketResponse | null = null;
 let socketTicketRequest: Promise<SocketTicketResponse> | null = null;
 
@@ -171,6 +172,20 @@ interface ChatSendAck {
   ok?: boolean;
   message?: Message;
   error?: string;
+  code?: string;
+  retryable?: boolean;
+}
+
+export class ChatSocketError extends Error {
+  code?: string;
+  retryable?: boolean;
+
+  constructor(message: string, code?: string, retryable?: boolean) {
+    super(message);
+    this.name = 'ChatSocketError';
+    this.code = code;
+    this.retryable = retryable;
+  }
 }
 
 function waitForSocketConnect(
@@ -336,6 +351,12 @@ function ensureSocketLifecycle(sock: Socket): void {
 
   sock.on('chat:notification', (data?: { conversationId?: string; message?: Message }) => {
     acknowledgeMessageDelivered(sock, data?.conversationId, data?.message);
+  });
+
+  sock.on('safety:state_changed', (data?: { reason?: string; occurredAt?: string }) => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(SAFETY_STATE_CHANGED_EVENT, { detail: data ?? {} }));
+    }
   });
 
   sock.on('socket:unauthenticated', () => {
@@ -651,7 +672,11 @@ export async function sendChatMessage(data: ChatSendPayload): Promise<Message> {
           return;
         }
 
-        reject(new Error(response?.error || 'Failed to send message'));
+        reject(new ChatSocketError(
+          response?.error || 'Failed to send message',
+          response?.code,
+          response?.retryable
+        ));
       }
     );
   });

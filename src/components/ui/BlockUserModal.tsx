@@ -9,7 +9,12 @@ import {
   Loader2,
   Check,
 } from 'lucide-react';
-import { blockUser } from '@/lib/api/connections';
+import { safetyAPI, type BlockUserResponse } from '@/lib/api/safety';
+import { handleApiError } from '@/lib/utils/errorHandler';
+import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/lib/auth/useAuth';
+import { removeUnavailableConversations, refreshSafetySensitiveQueries } from '@/lib/safety/clientCleanup';
+import { SAFETY_STATE_CHANGED_EVENT } from '@/lib/socket';
 
 interface BlockUserModalProps {
   isOpen: boolean;
@@ -17,7 +22,7 @@ interface BlockUserModalProps {
   userId: string;
   userName: string;
   userImage?: string | null;
-  onBlocked?: () => void;
+  onBlocked?: (response: BlockUserResponse) => void;
 }
 
 export function BlockUserModal({
@@ -28,6 +33,8 @@ export function BlockUserModal({
   userImage,
   onBlocked,
 }: BlockUserModalProps) {
+  const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
   const [loading, setLoading] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,15 +43,28 @@ export function BlockUserModal({
     try {
       setLoading(true);
       setError(null);
-      await blockUser(userId);
+      const response = await safetyAPI.blockUser(userId, 'Blocked from user profile');
+      if (currentUser?.id) {
+        await removeUnavailableConversations({
+          queryClient,
+          ownerId: currentUser.id,
+          conversationIds: response.effects?.affectedConversationIds ?? [],
+        });
+      }
+      await refreshSafetySensitiveQueries(queryClient, currentUser?.id);
+      window.dispatchEvent(new CustomEvent(SAFETY_STATE_CHANGED_EVENT, {
+        detail: {
+          reason: 'interaction_policy_changed',
+          affectedConversationIds: response.effects?.affectedConversationIds ?? [],
+        },
+      }));
       setBlocked(true);
-      onBlocked?.();
+      onBlocked?.(response);
       setTimeout(() => {
         onClose();
       }, 1500);
-    } catch (err: any) {
-      console.error('Failed to block user:', err);
-      setError(err.response?.data?.message || 'Failed to block user. Please try again.');
+    } catch (err: unknown) {
+      setError(handleApiError(err));
     } finally {
       setLoading(false);
     }
@@ -109,7 +129,7 @@ export function BlockUserModal({
                     User Blocked
                   </h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {userName} has been blocked. They won't be able to see your content or contact you.
+                    {userName} has been blocked. They won&apos;t be able to see your content or contact you.
                   </p>
                 </motion.div>
               ) : (
@@ -139,11 +159,11 @@ export function BlockUserModal({
                     <ul className="space-y-2">
                       <li className="flex items-start gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-gray-400 mt-1.5 shrink-0" />
-                        They won't be able to see your posts or profile
+                        They won&apos;t be able to see your posts or profile
                       </li>
                       <li className="flex items-start gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-gray-400 mt-1.5 shrink-0" />
-                        They won't be able to message you
+                        They won&apos;t be able to message you
                       </li>
                       <li className="flex items-start gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-gray-400 mt-1.5 shrink-0" />
@@ -151,7 +171,7 @@ export function BlockUserModal({
                       </li>
                       <li className="flex items-start gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-gray-400 mt-1.5 shrink-0" />
-                        They won't be notified that you blocked them
+                        They won&apos;t be notified that you blocked them
                       </li>
                     </ul>
                   </div>

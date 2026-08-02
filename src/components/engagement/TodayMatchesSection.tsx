@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UserPlus, ChevronRight, ChevronLeft, Check, Loader2, Sparkles, MessageCircle } from 'lucide-react';
+import { UserPlus, ChevronRight, ChevronLeft, Check, Loader2, MessageCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { getDailyMatches, type DailyMatch, type DailyMatchesResponse } from '@/lib/api/engagement';
 import { sendConnectionRequest } from '@/lib/api/connections';
@@ -107,21 +107,18 @@ export default function TodayMatchesSection() {
   if (!matchData || matchData.matches.length === 0) return null;
 
   return (
-    <div className="relative mb-4">
+    <div className="relative mb-3">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 mb-3">
-        <div className="flex items-center gap-2">
-          <span className="w-6 h-6 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-          </span>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Today&apos;s Matches</h3>
-          <span className="px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-neutral-800 text-[10px] font-medium text-gray-500 dark:text-neutral-400">
+      <div className="mb-2 flex items-center justify-between px-3 sm:px-4">
+        <div className="flex items-center gap-1.5">
+          <h3 className="text-[13px] font-semibold text-gray-900 sm:text-sm dark:text-white">Today&apos;s Matches</h3>
+          <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium text-gray-500 sm:text-[10px] dark:bg-neutral-800 dark:text-neutral-400">
             {matchData.matches.length}
           </span>
         </div>
         <Link
           href="/find-people"
-          className="flex items-center gap-0.5 px-2.5 py-1 rounded-full text-xs text-blue-600 dark:text-blue-400 font-medium hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+          className="flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-medium text-blue-600 transition-colors hover:bg-blue-50 sm:text-xs dark:text-blue-400 dark:hover:bg-blue-900/20"
         >
           See all <ChevronRight className="w-3.5 h-3.5" />
         </Link>
@@ -160,7 +157,7 @@ export default function TodayMatchesSection() {
       {/* Horizontal scroll container */}
       <div
         ref={scrollRef}
-        className="flex gap-3 overflow-x-auto scrollbar-hide px-4 pb-1"
+        className="scrollbar-hide flex gap-2.5 overflow-x-auto px-3 pb-1 sm:gap-3 sm:px-4"
         style={{ scrollSnapType: 'x mandatory' }}
       >
         {matchData.matches.map((match, i) => (
@@ -199,32 +196,32 @@ function MatchCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04 }}
-      className="flex-shrink-0 w-[200px] bg-white dark:bg-neutral-900 rounded-2xl border border-gray-100 dark:border-neutral-800 overflow-hidden hover:shadow-md hover:border-gray-200 dark:hover:border-neutral-700 hover:-translate-y-0.5 transition-all"
+      className="w-[164px] flex-shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-white transition-all hover:-translate-y-0.5 hover:border-gray-200 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700"
       style={{ scrollSnapAlign: 'start' }}
     >
       <Link href={`/profile/${match.username}`} className="block">
         {/* Avatar + Online indicator */}
-        <div className="relative flex justify-center pt-4 pb-2">
+        <div className="relative flex justify-center pb-1.5 pt-3">
           <div className="relative">
-            <div className="w-[68px] h-[68px] rounded-full p-[2px] bg-gradient-to-br from-amber-400 to-orange-500">
+            <div className="h-14 w-14 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 p-[2px]">
               <div className="w-full h-full rounded-full border-2 border-white dark:border-neutral-900 overflow-hidden bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
                 <UserAvatar
                   imageSrc={match.profileImage}
                   name={match.name}
-                  className="h-full w-full rounded-full text-xl font-bold text-gray-400"
-                  fallbackClassName="text-xl"
+                  className="h-full w-full rounded-full text-base font-bold text-gray-400"
+                  fallbackClassName="text-base"
                 />
               </div>
             </div>
             {match.isOnline && (
-              <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-neutral-900 rounded-full" />
+              <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-green-500 dark:border-neutral-900" />
             )}
           </div>
         </div>
 
         {/* Info */}
-        <div className="px-3 pb-2 text-center">
-          <p className="flex items-center justify-center gap-1.5 text-sm font-semibold text-gray-900 dark:text-white">
+        <div className="px-2.5 pb-1.5 text-center">
+          <p className="flex items-center justify-center gap-1 text-[13px] font-semibold text-gray-900 dark:text-white">
             <span className="truncate">{match.name}</span>
             <VerificationBadge
               profileBadgeStyle={match.profileBadgeStyle}
@@ -233,26 +230,26 @@ function MatchCard({
             />
           </p>
           {match.college && (
-            <p className="text-[11px] text-gray-400 dark:text-neutral-500 truncate mt-0.5">{match.college}</p>
+            <p className="mt-0.5 truncate text-[10px] text-gray-400 dark:text-neutral-500">{match.college}</p>
           )}
           {match.headline && (
-            <p className="text-[11px] text-gray-500 dark:text-neutral-400 truncate mt-0.5">{match.headline}</p>
+            <p className="mt-0.5 truncate text-[10px] text-gray-500 dark:text-neutral-400">{match.headline}</p>
           )}
         </div>
 
         {/* Interest chips */}
         {match.interests && match.interests.length > 0 && (
-          <div className="px-3 pb-2 flex flex-wrap justify-center gap-1">
+          <div className="flex flex-wrap justify-center gap-1 px-2.5 pb-1.5">
             {match.interests.slice(0, 2).map((interest) => (
               <span
                 key={interest}
-                className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium"
+                className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-600 dark:bg-blue-900/20 dark:text-blue-400"
               >
                 {interest}
               </span>
             ))}
             {match.interests.length > 2 && (
-              <span className="text-[10px] px-1.5 py-0.5 text-gray-400 dark:text-neutral-500">
+              <span className="px-1 py-0.5 text-[9px] text-gray-400 dark:text-neutral-500">
                 +{match.interests.length - 2}
               </span>
             )}
@@ -261,8 +258,8 @@ function MatchCard({
 
         {/* Reply rate badge */}
         {match.replyRate !== undefined && match.replyRate >= 50 && (
-          <div className="flex justify-center pb-2">
-            <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium px-2 py-0.5 rounded-full ${
+          <div className="flex justify-center pb-1.5">
+            <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-medium ${
               match.replyRate >= 80
                 ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400'
                 : 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400'
@@ -275,9 +272,9 @@ function MatchCard({
       </Link>
 
       {/* Connect button */}
-      <div className="px-3 pb-3">
+      <div className="px-2.5 pb-2.5">
         {isConnected ? (
-          <div className="flex items-center justify-center gap-1.5 w-full py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-xs font-semibold rounded-full">
+          <div className="flex w-full items-center justify-center gap-1.5 rounded-full bg-green-50 py-1.5 text-[11px] font-semibold text-green-600 dark:bg-green-900/20 dark:text-green-400">
             <Check className="w-3 h-3" />
             Request Sent
           </div>
@@ -285,7 +282,7 @@ function MatchCard({
           <button
             onClick={(e) => onConnect(e, match.id)}
             disabled={isConnecting}
-            className={`flex items-center justify-center gap-1.5 w-full py-2 text-xs font-semibold rounded-full transition-colors disabled:opacity-60 ${
+            className={`flex w-full items-center justify-center gap-1.5 rounded-full py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-60 ${
               hasFailed
                 ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30'
                 : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'

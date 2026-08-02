@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { ReelCard } from './ReelCard';
@@ -17,12 +17,11 @@ export function ReelsFeed({ mode = 'foryou', initialReels }: ReelsFeedProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
-  const observerRefs = useRef<Map<string, IntersectionObserver>>(new Map());
-  const adSessionIdRef = useRef<string>(
+  const [adSessionId] = useState(() => (
     typeof crypto !== 'undefined' && 'randomUUID' in crypto
       ? crypto.randomUUID()
-      : `reels-${Date.now()}-${Math.random().toString(36).slice(2)}`
-  );
+      : `reels-${performance.timeOrigin.toString(36)}`
+  ));
   const adItemOffsetRef = useRef(0);
 
   const {
@@ -40,7 +39,7 @@ export function ReelsFeed({ mode = 'foryou', initialReels }: ReelsFeedProps) {
         cursor: pageParam,
         limit: 10,
         mode,
-        adSessionId: adSessionIdRef.current,
+        adSessionId,
         adItemOffset,
       });
       adItemOffsetRef.current = adItemOffset + (response as unknown as ReelsFeedResponse).reels.length;
@@ -57,31 +56,25 @@ export function ReelsFeed({ mode = 'foryou', initialReels }: ReelsFeedProps) {
       : undefined,
   });
 
-  const reels = data?.pages.flatMap((p) => p.reels) ?? [];
-  const adPlacements = data?.pages.flatMap((p) => p.adPlacements || []) ?? [];
-  const items: Array<{ type: 'reel'; reel: Reel } | { type: 'ad'; ad: ManagedAdCreative }> = [];
-  reels.forEach((reel, index) => {
-    items.push({ type: 'reel', reel });
-    adPlacements
-      .filter((ad) => ad.afterItemCount === index + 1)
-      .forEach((ad) => items.push({ type: 'ad', ad }));
-  });
+  const reels = useMemo(() => data?.pages.flatMap((p) => p.reels) ?? [], [data]);
+  const adPlacements = useMemo(
+    () => data?.pages.flatMap((p) => p.adPlacements || []) ?? [],
+    [data]
+  );
+  const items = useMemo(() => {
+    const feedItems: Array<{ type: 'reel'; reel: Reel } | { type: 'ad'; ad: ManagedAdCreative }> = [];
+    reels.forEach((reel, index) => {
+      feedItems.push({ type: 'reel', reel });
+      adPlacements
+        .filter((ad) => ad.afterItemCount === index + 1)
+        .forEach((ad) => feedItems.push({ type: 'ad', ad }));
+    });
+    return feedItems;
+  }, [adPlacements, reels]);
 
   useEffect(() => {
-    const preloadReels = items
-      .slice(activeIndex + 1, activeIndex + 4)
-      .filter((item): item is { type: 'reel'; reel: Reel } => item.type === 'reel')
-      .map((item) => item.reel);
-    preloadReels.forEach((reel) => {
-      if (reel.hlsUrl) {
-        fetch(reel.hlsUrl).catch(() => {});
-      }
-      if (reel.thumbnailUrl) {
-        const img = new Image();
-        img.src = reel.thumbnailUrl;
-      }
-    });
-  }, [activeIndex, items]);
+    adItemOffsetRef.current = reels.length;
+  }, [reels.length]);
 
   const handleScroll = useCallback(() => {
     const container = containerRef.current;
@@ -120,7 +113,7 @@ export function ReelsFeed({ mode = 'foryou', initialReels }: ReelsFeedProps) {
 
   if (isLoading) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-black">
+      <div className="flex h-[100dvh] w-full items-center justify-center bg-black">
         <Loader2 className="w-12 h-12 text-white animate-spin" />
       </div>
     );
@@ -128,7 +121,7 @@ export function ReelsFeed({ mode = 'foryou', initialReels }: ReelsFeedProps) {
 
   if (isError) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-black text-white gap-4">
+      <div className="flex h-[100dvh] w-full flex-col items-center justify-center gap-4 bg-black text-white">
         <p>Failed to load reels</p>
         <button
           onClick={() => window.location.reload()}
@@ -142,7 +135,7 @@ export function ReelsFeed({ mode = 'foryou', initialReels }: ReelsFeedProps) {
 
   if (items.length === 0) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-black text-white gap-4">
+      <div className="flex h-[100dvh] w-full flex-col items-center justify-center gap-4 bg-black text-white">
         <p className="text-xl">No reels yet</p>
         <p className="text-gray-400">Be the first to create one!</p>
       </div>
@@ -152,18 +145,19 @@ export function ReelsFeed({ mode = 'foryou', initialReels }: ReelsFeedProps) {
   return (
     <div
       ref={containerRef}
-      className="h-screen w-full snap-y snap-mandatory overflow-y-scroll scrollbar-hide"
+      className="scrollbar-hide h-[100dvh] w-full snap-y snap-mandatory overflow-y-scroll overscroll-y-contain"
       onClick={handleFirstInteraction}
     >
       {items.map((item, index) => (
         <div
           key={item.type === 'reel' ? item.reel.id : `${item.ad.campaignId}-${item.ad.slotKey}`}
-          className="h-screen w-full snap-start snap-always"
+          className="h-[100dvh] w-full snap-start snap-always"
         >
           {item.type === 'reel' ? (
             <ReelCard
               reel={item.reel}
               isActive={index === activeIndex}
+              shouldPreload={Math.abs(index - activeIndex) <= 2}
               isMuted={isMuted}
               onMuteToggle={handleMuteToggle}
             />
@@ -171,14 +165,14 @@ export function ReelsFeed({ mode = 'foryou', initialReels }: ReelsFeedProps) {
             <ReelManagedAdCard
               ad={item.ad}
               isActive={index === activeIndex}
-              sessionId={adSessionIdRef.current}
+              sessionId={adSessionId}
             />
           )}
         </div>
       ))}
 
       {isFetchingNextPage && (
-        <div className="h-screen w-full flex items-center justify-center bg-black">
+        <div className="flex h-[100dvh] w-full items-center justify-center bg-black">
           <Loader2 className="w-12 h-12 text-white animate-spin" />
         </div>
       )}

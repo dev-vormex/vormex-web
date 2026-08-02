@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import {
   X,
@@ -18,19 +19,24 @@ import {
   Trash2,
   Archive,
   Share2,
+  Loader2,
 } from 'lucide-react';
 import Image from 'next/image';
+import { ProfileLink } from '@/components/profile/ProfileLink';
+import { getSocket, SAFETY_STATE_CHANGED_EVENT } from '@/lib/socket';
 import { useAuth } from '@/lib/auth/useAuth';
-import { getSocket } from '@/lib/socket';
+import { getStructuredApiError, isTerminalSafetyError } from '@/lib/api/errors';
+import { clearCachedStories } from '@/lib/stories/browserCache';
 import {
   viewStory,
+  getStoryViewers,
   reactToStory,
   removeReaction,
   replyToStory,
   deleteStory,
   archiveStory,
   type StoryGroup,
-  type Story,
+  type StoryViewer as StoryViewerRecord,
 } from '@/lib/api/stories';
 
 interface StoryViewerProps {
@@ -50,6 +56,7 @@ export function StoryViewer({
   onClose,
   onStoryEnd,
 }: StoryViewerProps) {
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const [currentGroupIndex, setCurrentGroupIndex] = useState(initialGroupIndex);
   const [currentStoryIndex, setCurrentStoryIndex] = useState(initialStoryIndex);
@@ -60,28 +67,112 @@ export function StoryViewer({
   const [showReplyInput, setShowReplyInput] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [showMenu, setShowMenu] = useState(false);
-  const [viewStartTime, setViewStartTime] = useState<number>(Date.now());
-  const [selectedReaction, setSelectedReaction] = useState<string | null>(null);
+  const [selectedReaction, setSelectedReaction] = useState<string | null>(() => (
+    storyGroups[initialGroupIndex]?.stories[initialStoryIndex]?.userReaction ?? null
+  ));
+  const [showViewers, setShowViewers] = useState(false);
+  const [viewers, setViewers] = useState<StoryViewerRecord[]>([]);
+  const [viewersCursor, setViewersCursor] = useState<string | null>(null);
+  const [viewersHasMore, setViewersHasMore] = useState(false);
+  const [isViewersLoading, setIsViewersLoading] = useState(false);
+  const [viewersError, setViewersError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const progressValueRef = useRef(0);
+  const viewStartTimeRef = useRef(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const unavailableCloseTimerRef = useRef<number | null>(null);
+  const wasPausedBeforeViewersRef = useRef(false);
 
   const currentGroup = storyGroups[currentGroupIndex];
   const [storiesWithViews, setStoriesWithViews] = useState<Record<string, number>>({});
   const currentStory = currentGroup?.stories[currentStoryIndex];
+  const currentStoryId = currentStory?.id;
   const currentViewsCount = storiesWithViews[currentStory?.id ?? ''] ?? currentStory?.viewsCount ?? 0;
   const isOwnStory = currentGroup?.isOwnStory;
+  const currentStoryOwnerId = currentGroup?.user.id;
+  const currentUserId = user?.id;
+
+  const handleStoryActionError = useCallback((error: unknown): boolean => {
+    const structured = getStructuredApiError(error);
+    const unavailable = isTerminalSafetyError(error) || structured.status === 403 || structured.status === 404;
+    setActionError(unavailable ? 'This story is unavailable.' : structured.message);
+
+    if (!unavailable) return false;
+
+    if (currentUserId) {
+      clearCachedStories(currentUserId);
+      queryClient.setQueryData<StoryGroup[]>(['stories', currentUserId], (previous) =>
+        previous?.filter((group) => group.user.id !== currentStoryOwnerId) ?? previous
+      );
+      void queryClient.invalidateQueries({ queryKey: ['stories', currentUserId] });
+    }
+    window.dispatchEvent(new CustomEvent(SAFETY_STATE_CHANGED_EVENT, {
+      detail: { reason: 'interaction_policy_changed' },
+    }));
+    if (unavailableCloseTimerRef.current !== null) {
+      window.clearTimeout(unavailableCloseTimerRef.current);
+    }
+    unavailableCloseTimerRef.current = window.setTimeout(onClose, 900);
+    return true;
+  }, [currentStoryOwnerId, currentUserId, onClose, queryClient]);
+
+  useEffect(() => () => {
+    if (unavailableCloseTimerRef.current !== null) {
+      window.clearTimeout(unavailableCloseTimerRef.current);
+    }
+  }, []);
+
+  const loadStoryViewers = useCallback(async (cursor?: string, append = false) => {
+    if (!currentStoryId || !isOwnStory) return;
+
+    setIsViewersLoading(true);
+    setViewersError(null);
+    try {
+      const result = await getStoryViewers(currentStoryId, cursor, 30);
+      setViewers((previous) => append ? [...previous, ...result.viewers] : result.viewers);
+      setViewersCursor(result.nextCursor);
+      setViewersHasMore(result.hasMore);
+      setStoriesWithViews((previous) => ({
+        ...previous,
+        [currentStoryId]: result.totalCount,
+      }));
+    } catch (error) {
+      if (!handleStoryActionError(error)) {
+        setViewersError('Could not load viewers. Please try again.');
+      }
+    } finally {
+      setIsViewersLoading(false);
+    }
+  }, [currentStoryId, handleStoryActionError, isOwnStory]);
+
+  const handleOpenViewers = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    wasPausedBeforeViewersRef.current = isPaused;
+    setIsPaused(true);
+    setShowViewers(true);
+    void loadStoryViewers();
+  };
+
+  const handleCloseViewers = () => {
+    setShowViewers(false);
+    setIsPaused(wasPausedBeforeViewersRef.current);
+  };
 
   // Live view count updates for own stories
   useEffect(() => {
-    if (!isOwnStory || !currentStory) return;
+    if (!isOwnStory || !currentStoryId) return;
     const socket = getSocket();
     if (!socket) return;
 
     const handleStoryViewed = ({ storyId, viewsCount }: { storyId: string; viewsCount: number }) => {
-      if (storyId === currentStory.id) {
+      if (storyId === currentStoryId) {
         setStoriesWithViews((prev) => ({ ...prev, [storyId]: viewsCount }));
+        if (showViewers) {
+          void loadStoryViewers();
+        }
       }
     };
 
@@ -89,40 +180,77 @@ export function StoryViewer({
     return () => {
       socket.off('story:viewed', handleStoryViewed);
     };
-  }, [isOwnStory, currentStory?.id]);
-
-  // Mark story as viewed on mount and story change
-  useEffect(() => {
-    if (currentStory && !isOwnStory) {
-      setViewStartTime(Date.now());
-      
-      // Record view via socket for real-time updates
-      const socket = getSocket();
-      if (socket) {
-        socket.emit('story:view', { storyId: currentStory.id });
-      }
-    }
-  }, [currentStory?.id, isOwnStory]);
+  }, [isOwnStory, currentStoryId, showViewers, loadStoryViewers]);
 
   // Record view duration when leaving story
   const recordView = useCallback(async () => {
-    if (currentStory && !isOwnStory) {
-      const duration = Date.now() - viewStartTime;
+    if (currentStoryId && !isOwnStory) {
+      const duration = Date.now() - viewStartTimeRef.current;
       
       // Use socket for real-time view tracking
       const socket = getSocket();
       if (socket) {
-        socket.emit('story:view', { storyId: currentStory.id, duration });
+        socket.emit('story:view', { storyId: currentStoryId, duration });
       } else {
         // Fallback to HTTP
         try {
-          await viewStory(currentStory.id, duration);
+          await viewStory(currentStoryId, duration);
         } catch (error) {
-          console.error('Error recording view:', error);
+          handleStoryActionError(error);
         }
       }
     }
-  }, [currentStory, isOwnStory, viewStartTime]);
+  }, [currentStoryId, handleStoryActionError, isOwnStory]);
+
+  const handleClose = useCallback(async () => {
+    await recordView();
+    onClose();
+  }, [onClose, recordView]);
+
+  const selectStory = useCallback((groupIndex: number, storyIndex: number) => {
+    const nextStory = storyGroups[groupIndex]?.stories[storyIndex];
+    progressValueRef.current = 0;
+    setProgress(0);
+    setSelectedReaction(nextStory?.userReaction ?? null);
+    setCurrentGroupIndex(groupIndex);
+    setCurrentStoryIndex(storyIndex);
+  }, [storyGroups]);
+
+  const goToNextStory = useCallback(async () => {
+    await recordView();
+
+    if (currentStoryIndex < currentGroup.stories.length - 1) {
+      selectStory(currentGroupIndex, currentStoryIndex + 1);
+    } else if (currentGroupIndex < storyGroups.length - 1) {
+      selectStory(currentGroupIndex + 1, 0);
+    } else {
+      onClose();
+      onStoryEnd?.();
+    }
+  }, [currentStoryIndex, currentGroupIndex, currentGroup, storyGroups.length, recordView, selectStory, onClose, onStoryEnd]);
+
+  const goToPreviousStory = useCallback(async () => {
+    await recordView();
+
+    if (currentStoryIndex > 0) {
+      selectStory(currentGroupIndex, currentStoryIndex - 1);
+    } else if (currentGroupIndex > 0) {
+      const previousGroupIndex = currentGroupIndex - 1;
+      const previousStoryIndex = storyGroups[previousGroupIndex].stories.length - 1;
+      selectStory(previousGroupIndex, previousStoryIndex);
+    }
+  }, [currentStoryIndex, currentGroupIndex, storyGroups, recordView, selectStory]);
+
+  // Mark story as viewed on mount and story change.
+  useEffect(() => {
+    if (!currentStoryId || isOwnStory) return;
+
+    viewStartTimeRef.current = Date.now();
+    const socket = getSocket();
+    if (socket) {
+      socket.emit('story:view', { storyId: currentStoryId });
+    }
+  }, [currentStoryId, isOwnStory]);
 
   // Progress timer
   useEffect(() => {
@@ -136,13 +264,14 @@ export function StoryViewer({
     const increment = (100 / duration) * interval;
 
     progressIntervalRef.current = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          goToNextStory();
-          return 0;
-        }
-        return prev + increment;
-      });
+      const nextProgress = progressValueRef.current + increment;
+      if (nextProgress >= 100) {
+        progressValueRef.current = 0;
+        void goToNextStory();
+        return;
+      }
+      progressValueRef.current = nextProgress;
+      setProgress(nextProgress);
     }, interval);
 
     return () => {
@@ -150,32 +279,34 @@ export function StoryViewer({
         clearInterval(progressIntervalRef.current);
       }
     };
-  }, [currentStory?.id, isPaused]);
-
-  // Reset progress when story changes
-  useEffect(() => {
-    setProgress(0);
-    setSelectedReaction(currentStory?.userReaction || null);
-  }, [currentStory?.id]);
+  }, [currentStory, isPaused, goToNextStory]);
 
   // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (showViewers) {
+        if (e.key === 'Escape') {
+          setShowViewers(false);
+          setIsPaused(wasPausedBeforeViewersRef.current);
+        }
+        return;
+      }
+
       switch (e.key) {
         case 'ArrowUp':
         case 'ArrowLeft':
-          goToPreviousStory();
+          void goToPreviousStory();
           break;
         case 'ArrowDown':
         case 'ArrowRight':
-          goToNextStory();
+          void goToNextStory();
           break;
         case ' ':
           e.preventDefault();
           setIsPaused((prev) => !prev);
           break;
         case 'Escape':
-          handleClose();
+          void handleClose();
           break;
         case 'm':
           setIsMuted((prev) => !prev);
@@ -185,41 +316,10 @@ export function StoryViewer({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  const goToNextStory = useCallback(async () => {
-    await recordView();
-
-    if (currentStoryIndex < currentGroup.stories.length - 1) {
-      setCurrentStoryIndex((prev) => prev + 1);
-    } else if (currentGroupIndex < storyGroups.length - 1) {
-      setCurrentGroupIndex((prev) => prev + 1);
-      setCurrentStoryIndex(0);
-    } else {
-      handleClose();
-      onStoryEnd?.();
-    }
-  }, [currentStoryIndex, currentGroupIndex, currentGroup, storyGroups.length, recordView, onStoryEnd]);
-
-  const goToPreviousStory = useCallback(async () => {
-    await recordView();
-
-    if (currentStoryIndex > 0) {
-      setCurrentStoryIndex((prev) => prev - 1);
-    } else if (currentGroupIndex > 0) {
-      setCurrentGroupIndex((prev) => prev - 1);
-      const prevGroup = storyGroups[currentGroupIndex - 1];
-      setCurrentStoryIndex(prevGroup.stories.length - 1);
-    }
-  }, [currentStoryIndex, currentGroupIndex, storyGroups, recordView]);
-
-  const handleClose = async () => {
-    await recordView();
-    onClose();
-  };
+  }, [goToNextStory, goToPreviousStory, handleClose, showViewers]);
 
   // Swipe handling for vertical navigation
-  const handleDragEnd = (event: any, info: PanInfo) => {
+  const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     const threshold = 50;
     const velocity = 500;
 
@@ -234,6 +334,7 @@ export function StoryViewer({
     if (!currentStory) return;
 
     try {
+      setActionError(null);
       if (selectedReaction === reaction) {
         await removeReaction(currentStory.id);
         setSelectedReaction(null);
@@ -248,7 +349,7 @@ export function StoryViewer({
         socket.emit('story:react', { storyId: currentStory.id, reaction });
       }
     } catch (error) {
-      console.error('Error reacting to story:', error);
+      handleStoryActionError(error);
     }
     setShowReactions(false);
   };
@@ -257,23 +358,16 @@ export function StoryViewer({
     if (!currentStory || !replyText.trim()) return;
 
     try {
-      // Emit via socket for real-time delivery
-      const socket = getSocket();
-      if (socket) {
-        socket.emit('story:reply', { 
-          storyId: currentStory.id, 
-          content: replyText.trim() 
-        });
-      } else {
-        // Fallback to HTTP
-        await replyToStory(currentStory.id, replyText.trim());
-      }
+      setActionError(null);
+      // The authenticated endpoint persists the reply and performs realtime
+      // delivery to the story owner after the database write succeeds.
+      await replyToStory(currentStory.id, replyText.trim());
       
       setReplyText('');
       setShowReplyInput(false);
       // Show success toast or animation
     } catch (error) {
-      console.error('Error sending reply:', error);
+      handleStoryActionError(error);
     }
   };
 
@@ -313,6 +407,19 @@ export function StoryViewer({
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-[100] bg-black"
       >
+        <AnimatePresence>
+          {actionError && (
+            <motion.div
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              role="status"
+              className="absolute left-1/2 top-16 z-[130] -translate-x-1/2 rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white shadow-xl"
+            >
+              {actionError}
+            </motion.div>
+          )}
+        </AnimatePresence>
         {/* Main Content Container */}
         <motion.div
           ref={containerRef}
@@ -546,10 +653,15 @@ export function StoryViewer({
               {/* View Count (for own stories) - updates live when others view */}
               {isOwnStory && (
                 <div className="flex items-center gap-4 mb-4 text-white/80">
-                  <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={handleOpenViewers}
+                    className="flex items-center gap-1 rounded-full bg-black/25 px-2.5 py-1.5 transition-colors hover:bg-black/40"
+                    aria-label={`See ${currentViewsCount} story viewers`}
+                  >
                     <Eye className="w-4 h-4" />
                     <span className="text-sm">{currentViewsCount} views</span>
-                  </div>
+                  </button>
                   <div className="flex items-center gap-1">
                     <Heart className="w-4 h-4" />
                     <span className="text-sm">{currentStory.reactionsCount} reactions</span>
@@ -669,6 +781,121 @@ export function StoryViewer({
             </div>
           </div>
         </motion.div>
+
+        {/* Private viewer list, available only to the story owner */}
+        <AnimatePresence>
+          {showViewers && isOwnStory && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-30 flex items-end justify-center bg-black/55"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleCloseViewers();
+              }}
+            >
+              <motion.div
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
+                transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+                className="flex max-h-[70dvh] w-full max-w-lg flex-col rounded-t-3xl border-t border-white/10 bg-neutral-950 text-white shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="px-4 pb-3 pt-2">
+                  <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/25" />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-base font-semibold">Story viewers</h2>
+                      <p className="text-xs text-white/55">
+                        {currentViewsCount} {currentViewsCount === 1 ? 'person' : 'people'} viewed this story
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCloseViewers}
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10"
+                      aria-label="Close story viewers"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="min-h-28 flex-1 overflow-y-auto border-t border-white/10 px-3 py-2">
+                  {isViewersLoading && viewers.length === 0 ? (
+                    <div className="flex h-28 items-center justify-center">
+                      <Loader2 className="h-5 w-5 animate-spin text-white/65" />
+                    </div>
+                  ) : viewersError && viewers.length === 0 ? (
+                    <div className="flex h-32 flex-col items-center justify-center gap-3 text-center">
+                      <p className="text-sm text-white/65">{viewersError}</p>
+                      <button
+                        type="button"
+                        onClick={() => void loadStoryViewers()}
+                        className="rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-black"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  ) : viewers.length === 0 ? (
+                    <div className="flex h-32 flex-col items-center justify-center gap-2 text-center text-white/55">
+                      <Eye className="h-6 w-6" />
+                      <p className="text-sm">No viewers yet</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      {viewers.map((viewer) => viewer.user && (
+                        <ProfileLink
+                          key={viewer.id}
+                          profileId={viewer.user.id}
+                          className="flex items-center gap-3 rounded-2xl px-2 py-2.5 transition-colors hover:bg-white/5"
+                        >
+                          <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full bg-white/10">
+                            {viewer.user.profileImage ? (
+                              <Image
+                                src={viewer.user.profileImage}
+                                alt={viewer.user.name}
+                                fill
+                                sizes="40px"
+                                className="object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-500 to-violet-600 text-sm font-bold">
+                                {viewer.user.name.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold">{viewer.user.name}</p>
+                            <p className="truncate text-xs text-white/55">@{viewer.user.username}</p>
+                          </div>
+                          <span className="flex-shrink-0 text-[11px] text-white/45">
+                            {formatTimeAgo(new Date(viewer.viewedAt))}
+                          </span>
+                        </ProfileLink>
+                      ))}
+
+                      {viewersHasMore && viewersCursor && (
+                        <button
+                          type="button"
+                          disabled={isViewersLoading}
+                          onClick={() => void loadStoryViewers(viewersCursor, true)}
+                          className="mx-auto mt-2 flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-xs font-medium disabled:opacity-60"
+                        >
+                          {isViewersLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                          Load more
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="h-[env(safe-area-inset-bottom)]" />
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Menu Modal */}
         <AnimatePresence>

@@ -42,6 +42,16 @@ export interface Message {
     contentType: string;
     senderId: string;
   };
+  story?: {
+    id: string | null;
+    mediaUrl: string | null;
+    mediaType: string | null;
+    thumbnailUrl: string | null;
+    textContent: string | null;
+    backgroundColor: string | null;
+    expiresAt: string | null;
+    available: boolean;
+  };
   sender: ChatUser;
   reactions: MessageReaction[];
   createdAt: string;
@@ -82,6 +92,7 @@ export interface Conversation {
 
 export interface ConversationsResponse {
   conversations: Conversation[];
+  unavailableConversationIds?: string[];
   hasMore: boolean;
   nextCursor?: string;
 }
@@ -96,6 +107,7 @@ export interface ChatSyncResponse {
   messages: Message[];
   statusChanges: Message[];
   conversations: Conversation[];
+  unavailableConversationIds?: string[];
   cursor: string;
   hasMore: boolean;
 }

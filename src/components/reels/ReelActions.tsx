@@ -65,7 +65,7 @@ export function ReelActions({
       setIsLiked(response.liked);
       setLikesCount(response.likesCount);
       onLikeUpdate?.(response.liked, response.likesCount);
-    } catch (error) {
+    } catch {
       setIsLiked(!newLiked);
       setLikesCount(likesCount);
     }
@@ -83,7 +83,7 @@ export function ReelActions({
       setIsSaved(response.saved);
       setSavesCount(response.savesCount);
       onSaveUpdate?.(response.saved, response.savesCount);
-    } catch (error) {
+    } catch {
       setIsSaved(!newSaved);
       setSavesCount(savesCount);
     }
@@ -100,87 +100,88 @@ export function ReelActions({
   };
 
   return (
-    <div className="flex flex-col items-center gap-5">
+    <div className="flex flex-col items-center gap-2.5 sm:gap-5">
       {onMuteToggle && (
         <button
           onClick={onMuteToggle}
-          className="flex flex-col items-center gap-1 group"
+          className="group flex flex-col items-center gap-0.5 sm:gap-1"
+          aria-label={isMuted ? 'Unmute reel' : 'Mute reel'}
         >
-          <div className="w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-active:scale-95 transition-transform">
+          <div className="flex h-[34px] w-[34px] items-center justify-center rounded-full border border-white/10 bg-black/45 backdrop-blur-md transition-transform group-active:scale-95 sm:h-12 sm:w-12">
             {isMuted ? (
-              <VolumeX className="w-7 h-7 text-white" />
+              <VolumeX className="h-[19px] w-[19px] text-white sm:h-7 sm:w-7" />
             ) : (
-              <Volume2 className="w-7 h-7 text-white" />
+              <Volume2 className="h-[19px] w-[19px] text-white sm:h-7 sm:w-7" />
             )}
           </div>
-          <span className="text-white text-xs font-medium">
+          <span className="sr-only text-xs font-medium text-white sm:not-sr-only">
             {isMuted ? 'Unmute' : 'Mute'}
           </span>
         </button>
       )}
       <button
         onClick={handleLike}
-        className="flex flex-col items-center gap-1 group"
+        className="group flex flex-col items-center gap-0.5 sm:gap-1"
       >
         <div className={cn(
-          "w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center transition-transform",
+          "flex h-[34px] w-[34px] items-center justify-center rounded-full border border-white/10 bg-black/45 backdrop-blur-md transition-transform sm:h-12 sm:w-12",
           isLikeAnimating && "animate-bounce-once"
         )}>
           <Heart
             className={cn(
-              "w-7 h-7 transition-all",
+              "h-[19px] w-[19px] transition-all sm:h-7 sm:w-7",
               isLiked ? "text-red-500 fill-red-500 scale-110" : "text-white"
             )}
           />
         </div>
-        <span className="text-white text-xs font-medium">
+        <span className="text-[10px] font-medium leading-none text-white sm:text-xs">
           {formatCount(likesCount)}
         </span>
       </button>
 
       <button
         onClick={onCommentClick}
-        className="flex flex-col items-center gap-1 group"
+        className="group flex flex-col items-center gap-0.5 sm:gap-1"
       >
-        <div className="w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-active:scale-95 transition-transform">
-          <MessageCircle className="w-7 h-7 text-white" />
+        <div className="flex h-[34px] w-[34px] items-center justify-center rounded-full border border-white/10 bg-black/45 backdrop-blur-md transition-transform group-active:scale-95 sm:h-12 sm:w-12">
+          <MessageCircle className="h-[19px] w-[19px] text-white sm:h-7 sm:w-7" />
         </div>
-        <span className="text-white text-xs font-medium">
+        <span className="text-[10px] font-medium leading-none text-white sm:text-xs">
           {formatCount(reel.commentsCount)}
         </span>
       </button>
 
       <button
         onClick={onShareClick}
-        className="flex flex-col items-center gap-1 group"
+        className="group flex flex-col items-center gap-0.5 sm:gap-1"
       >
-        <div className="w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-active:scale-95 transition-transform">
-          <Share2 className="w-7 h-7 text-white" />
+        <div className="flex h-[34px] w-[34px] items-center justify-center rounded-full border border-white/10 bg-black/45 backdrop-blur-md transition-transform group-active:scale-95 sm:h-12 sm:w-12">
+          <Share2 className="h-[19px] w-[19px] text-white sm:h-7 sm:w-7" />
         </div>
-        <span className="text-white text-xs font-medium">
+        <span className="text-[10px] font-medium leading-none text-white sm:text-xs">
           {formatCount(reel.sharesCount)}
         </span>
       </button>
 
       <button
         onClick={handleSave}
-        className="flex flex-col items-center gap-1 group"
+        className="group flex flex-col items-center gap-0.5 sm:gap-1"
       >
-        <div className="w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-active:scale-95 transition-transform">
+        <div className="flex h-[34px] w-[34px] items-center justify-center rounded-full border border-white/10 bg-black/45 backdrop-blur-md transition-transform group-active:scale-95 sm:h-12 sm:w-12">
           <Bookmark
             className={cn(
-              "w-7 h-7 transition-all",
+              "h-[19px] w-[19px] transition-all sm:h-7 sm:w-7",
               isSaved ? "text-yellow-400 fill-yellow-400" : "text-white"
             )}
           />
         </div>
-        <span className="text-white text-xs font-medium">
+        <span className="text-[10px] font-medium leading-none text-white sm:text-xs">
           {formatCount(savesCount)}
         </span>
       </button>
 
       {reel.audio && (
-        <button className="w-10 h-10 rounded-full overflow-hidden border-2 border-white animate-spin-slow">
+        <button className="h-8 w-8 overflow-hidden rounded-full border-2 border-white animate-spin-slow sm:h-10 sm:w-10">
           <img
             src={reel.audio.albumArt || '/audio-placeholder.png'}
             alt={reel.audio.title}
@@ -194,8 +195,8 @@ export function ReelActions({
           onClick={() => setShowMoreMenu(!showMoreMenu)}
           className="flex flex-col items-center gap-1 group"
         >
-          <div className="w-10 h-10 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-active:scale-95 transition-transform">
-            <MoreHorizontal className="w-5 h-5 text-white" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black/45 backdrop-blur-md transition-transform group-active:scale-95 sm:h-10 sm:w-10">
+            <MoreHorizontal className="h-[18px] w-[18px] text-white sm:h-5 sm:w-5" />
           </div>
         </button>
 

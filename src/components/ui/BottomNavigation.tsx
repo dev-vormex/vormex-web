@@ -59,7 +59,7 @@ export function BottomNavigation({ items, className }: BottomNavigationProps) {
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: 24 }}
                             transition={{ type: "spring", stiffness: 280, damping: 26 }}
-                            className="fixed bottom-[96px] left-1/2 z-50 w-[calc(100vw-32px)] max-w-[400px] -translate-x-1/2 rounded-[28px] border border-white/10 bg-[#1e1e1e]/95 p-4 shadow-2xl shadow-black/30 backdrop-blur-xl"
+                            className="fixed bottom-[66px] left-1/2 z-50 w-[calc(100vw-24px)] max-w-[380px] -translate-x-1/2 rounded-[22px] border border-slate-700/60 bg-[#121827]/95 p-4 shadow-2xl shadow-slate-950/30 backdrop-blur-xl"
                         >
                             <div className="mb-3 flex items-center justify-between">
                                 <p className="text-sm font-semibold text-white">Quick Access</p>
@@ -103,37 +103,24 @@ export function BottomNavigation({ items, className }: BottomNavigationProps) {
             </AnimatePresence>
 
             <div className={cn(
-                "fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50",
-                "w-[calc(100vw-32px)] max-w-[400px]",
-                "h-[72px]", // Height 60-72px
-                "bg-[#1e1e1e]/90 backdrop-blur-md", // Dark background with blur
-                "rounded-[28px]", // Border radius 24-28px
-                "shadow-xl shadow-black/20", // Elevated shadow
-                "flex items-center justify-between px-2",
+                "fixed bottom-2.5 left-1/2 z-50 -translate-x-1/2",
+                "h-[50px] w-[calc(100vw-24px)] max-w-[380px]",
+                "border border-slate-700/60 bg-gradient-to-b from-[#182033]/95 to-[#111725]/95 backdrop-blur-xl",
+                "rounded-[20px]",
+                "shadow-lg shadow-slate-950/25",
+                "flex items-center justify-between px-1.5",
                 "safe-area-inset-bottom",
                 className
             )}>
                 {items.map((item, index) => {
                     const isActive = item.isActive;
+                    const isHighlighted = isActive || openMenuHref === item.href;
 
                     return (
                         <div key={item.href + index} className="relative flex-1 flex items-center justify-center h-full">
-                            {(isActive || openMenuHref === item.href) && (
-                                <motion.div
-                                    layoutId="active-pill"
-                                    className="absolute bg-[#9EFF00] rounded-[24px]"
-                                    initial={false}
-                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                    style={{
-                                        width: '64px', // Approx pill width
-                                        height: '48px', // Pill height
-                                        zIndex: 0
-                                    }}
-                                />
-                            )}
-
                             <Link
                                 href={item.href}
+                                aria-label={item.title}
                                 onMouseEnter={() => prefetchRoute(item.href)}
                                 onFocus={() => prefetchRoute(item.href)}
                                 onTouchStart={() => prefetchRoute(item.href)}
@@ -154,36 +141,38 @@ export function BottomNavigation({ items, className }: BottomNavigationProps) {
                                     }
                                 }}
                                 className={cn(
-                                    "relative z-10 flex items-center justify-center w-full h-full",
+                                    "relative flex h-full w-full items-center justify-center",
                                     "transition-colors duration-300",
-                                    isActive || openMenuHref === item.href ? "text-[#1E1E1E]" : "text-white/60 hover:text-white"
+                                    isHighlighted ? "text-white" : "text-slate-400 hover:text-slate-100"
                                 )}
                             >
                                 <motion.div
                                     whileTap={{ scale: 0.9 }}
-                                    className="flex flex-col items-center justify-center w-full h-full"
+                                    className="flex h-full w-full items-center justify-center"
                                 >
                                     {/* Icon Container */}
-                                    <div className="relative">
-                                        <div className={cn("w-6 h-6", isActive || openMenuHref === item.href ? "text-[#1E1E1E]" : "text-current")}>
-                                            {item.icon}
-                                        </div>
-
-                                        {/* Badge */}
-                                        {item.badge && item.badge > 0 && (
-                                            <span className="absolute -top-1 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-[#1E1E1E]">
-                                                {item.badge > 9 ? '9+' : item.badge}
-                                            </span>
+                                    <div className="relative flex h-8 w-10 items-center justify-center">
+                                        {isHighlighted && (
+                                            <motion.div
+                                                layoutId="active-icon"
+                                                className="absolute inset-0 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 shadow-sm shadow-blue-950/40"
+                                                initial={false}
+                                                transition={{ type: "spring", stiffness: 320, damping: 30 }}
+                                            />
                                         )}
+
+                                        <div className="relative z-10 h-[17px] w-[17px] text-current sm:h-[19px] sm:w-[19px]">
+                                            {item.icon}
+
+                                            {/* Badge */}
+                                            {item.badge && item.badge > 0 && (
+                                                <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-[#151c2c]">
+                                                    {item.badge > 9 ? '9+' : item.badge}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
 
-                                    {/* Label */}
-                                    <span className={cn(
-                                        "text-[10px] font-medium transition-all duration-300 mt-1",
-                                        isActive || openMenuHref === item.href ? "text-[#1E1E1E] font-bold" : "text-white/60"
-                                    )}>
-                                        {item.title}
-                                    </span>
                                 </motion.div>
                             </Link>
                         </div>

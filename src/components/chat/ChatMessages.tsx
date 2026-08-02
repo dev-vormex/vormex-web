@@ -16,7 +16,8 @@ import {
   markChatAsRead,
   deleteChatMessage,
   editChatMessage,
-  reactToChatMessage
+  reactToChatMessage,
+  SAFETY_STATE_CHANGED_EVENT,
 } from '@/lib/socket';
 import { format, isToday, isYesterday } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -34,6 +35,8 @@ import { mergeMessages, normalizeMessage } from '@/lib/chat/messageCache';
 import { CHAT_SYNC_EVENT } from './ChatOutboxCoordinator';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { handleApiError } from '@/lib/utils/errorHandler';
+import { isTerminalSafetyError } from '@/lib/api/errors';
+import { ImageOff, Play } from 'lucide-react';
 
 const INITIAL_FIRST_ITEM_INDEX = 100_000;
 
@@ -268,7 +271,13 @@ export default function ChatMessages({
       setHasMore(preserveCachedHistoryCursor ? hasMoreRef.current : result.hasMore);
       setNextCursor(preserveCachedHistoryCursor ? nextCursorRef.current : result.nextCursor);
     } catch (err: unknown) {
-      console.error('Failed to fetch messages:', err);
+      if (isTerminalSafetyError(err)) {
+        setFetchError('This conversation is unavailable.');
+        window.dispatchEvent(new CustomEvent(SAFETY_STATE_CHANGED_EVENT, {
+          detail: { reason: 'interaction_policy_changed', affectedConversationIds: [conversationId] },
+        }));
+        return;
+      }
       setFetchError(handleApiError(err));
       if (cursor) setHasMore(false);
     } finally {
@@ -389,8 +398,19 @@ export default function ChatMessages({
       }
     };
 
-    const handleError = (data: { message: string }) => {
-      console.error('Chat socket error:', data.message);
+    const handleError = (data: unknown) => {
+      const payload = typeof data === 'string'
+        ? { message: data }
+        : (data as { message?: string; error?: string; code?: string; retryable?: boolean } | null);
+      const message = payload?.message || payload?.error || 'Chat is temporarily unavailable.';
+      if (payload?.code === 'user_blocked' || payload?.code === 'resource_unavailable') {
+        setFetchError('This conversation is unavailable.');
+        window.dispatchEvent(new CustomEvent(SAFETY_STATE_CHANGED_EVENT, {
+          detail: { reason: 'interaction_policy_changed', affectedConversationIds: [conversationId] },
+        }));
+        return;
+      }
+      setFetchError(message);
     };
 
     const handleMessageDeleted = (data: { messageId: string; conversationId: string; forEveryone: boolean }) => {
@@ -914,6 +934,18 @@ function MessageBubble({
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   const [copied, setCopied] = useState(false);
+  const isStoryMessage = message.contentType === 'story_reply' || message.contentType === 'story_reaction';
+  const [storyAvailable, setStoryAvailable] = useState(isStoryMessage && message.story?.available === true);
+  const storyPreviewUrl = message.story?.thumbnailUrl || (
+    message.story?.mediaType === 'IMAGE' ? message.story.mediaUrl : null
+  );
+
+  useEffect(() => {
+    if (!storyAvailable || !message.story?.expiresAt) return;
+    const remainingTime = Math.max(0, Date.parse(message.story.expiresAt) - Date.now());
+    const expiryTimer = window.setTimeout(() => setStoryAvailable(false), remainingTime);
+    return () => window.clearTimeout(expiryTimer);
+  }, [message.story?.expiresAt, storyAvailable]);
 
   const handleDelete = (forEveryone: boolean) => {
     deleteChatMessage(message.id, conversationId, forEveryone);
@@ -996,13 +1028,59 @@ function MessageBubble({
 
         {/* Message content */}
         <div className={cn(
-          'px-4 py-2 rounded-2xl relative',
+          'relative rounded-2xl px-3 py-2 text-sm leading-5 sm:px-4 sm:text-base sm:leading-6',
           animatedBubbles && 'shadow-sm shadow-blue-400/15 transition-transform duration-150 hover:scale-[1.01]',
           isOwn 
             ? 'bg-blue-600 text-white rounded-br-sm' 
             : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-bl-sm',
           message.replyTo && 'rounded-t-none'
         )}>
+          {isStoryMessage && (
+            <div className={cn(
+              'mb-2 overflow-hidden rounded-xl border',
+              isOwn ? 'border-white/20 bg-blue-700/45' : 'border-black/10 bg-black/5 dark:border-white/10 dark:bg-white/5'
+            )}>
+              <div className="px-2.5 py-1.5 text-[11px] font-semibold opacity-75">
+                {message.contentType === 'story_reaction' ? 'Reacted to this story' : 'Replied to this story'}
+              </div>
+
+              {storyAvailable ? (
+                <div className="relative h-28 overflow-hidden bg-black/20">
+                  {storyPreviewUrl ? (
+                    <img
+                      src={storyPreviewUrl}
+                      alt="Referenced story"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : message.story?.mediaType === 'VIDEO' ? (
+                    <div className="flex h-full items-center justify-center bg-gradient-to-br from-neutral-800 to-neutral-950">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-neutral-900">
+                        <Play className="ml-0.5 h-4 w-4 fill-current" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className="flex h-full items-center justify-center px-4 text-center text-sm font-semibold text-white"
+                      style={{ backgroundColor: message.story?.backgroundColor || '#3b82f6' }}
+                    >
+                      {message.story?.textContent || 'Story'}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex min-h-20 items-center gap-3 border-t border-current/10 px-3 py-3">
+                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-current/10">
+                    <ImageOff className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">Story not available</p>
+                    <p className="text-[11px] leading-4 opacity-65">This story has expired after 24 hours.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Image content */}
           {message.mediaUrl && message.contentType === 'image' && (
             <button 

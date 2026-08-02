@@ -9,12 +9,12 @@ interface ReelPlayerProps {
   mp4Url: string;
   thumbnailUrl?: string | null;
   isActive: boolean;
+  shouldPreload?: boolean;
   isMuted: boolean;
   onProgress?: (progress: number, watchTimeMs: number) => void;
   onComplete?: () => void;
   onTap?: () => void;
   onDoubleTap?: () => void;
-  onMuteToggle?: () => void;
 }
 
 export function ReelPlayer({
@@ -22,15 +22,16 @@ export function ReelPlayer({
   mp4Url,
   thumbnailUrl,
   isActive,
+  shouldPreload = false,
   isMuted,
   onProgress,
   onComplete,
   onTap,
   onDoubleTap,
-  onMuteToggle,
 }: ReelPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const isActiveRef = useRef(isActive);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showControls, setShowControls] = useState(false);
@@ -41,8 +42,14 @@ export function ReelPlayer({
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    isActiveRef.current = isActive;
+  }, [isActive]);
+
+  useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || !shouldPreload) return;
+
+    setError(false);
 
     const initHls = () => {
       if (hlsUrl && Hls.isSupported()) {
@@ -61,7 +68,7 @@ export function ReelPlayer({
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           setIsLoaded(true);
-          if (isActive) {
+          if (isActiveRef.current) {
             video.play().catch(() => {});
           }
         });
@@ -80,7 +87,7 @@ export function ReelPlayer({
         video.src = hlsUrl;
         video.addEventListener('loadedmetadata', () => {
           setIsLoaded(true);
-          if (isActive) {
+          if (isActiveRef.current) {
             video.play().catch(() => {});
           }
         });
@@ -88,7 +95,7 @@ export function ReelPlayer({
         video.src = mp4Url;
         video.addEventListener('loadedmetadata', () => {
           setIsLoaded(true);
-          if (isActive) {
+          if (isActiveRef.current) {
             video.play().catch(() => {});
           }
         });
@@ -100,8 +107,12 @@ export function ReelPlayer({
     return () => {
       hlsRef.current?.destroy();
       hlsRef.current = null;
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      setIsLoaded(false);
     };
-  }, [hlsUrl, mp4Url]);
+  }, [hlsUrl, mp4Url, shouldPreload]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -112,7 +123,6 @@ export function ReelPlayer({
     } else {
       video.pause();
       video.currentTime = 0;
-      setIsPlaying(false);
     }
   }, [isActive, isLoaded]);
 
@@ -225,12 +235,12 @@ export function ReelPlayer({
 
       <video
         ref={videoRef}
-        className="w-full h-full object-contain"
+        className="h-full w-full object-cover sm:object-contain"
         playsInline
         loop
         muted={isMuted}
         poster={thumbnailUrl || undefined}
-        preload="metadata"
+        preload={shouldPreload ? 'auto' : 'none'}
       />
 
       <div className="absolute top-0 left-0 right-0 h-1 bg-white/20">

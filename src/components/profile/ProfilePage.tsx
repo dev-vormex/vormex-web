@@ -41,6 +41,9 @@ import { ProfileSkeleton } from './ProfileSkeleton';
 import { Button } from '@/components/ui/Button';
 import type { FullProfileResponse, CoreProfileResponse, ProfileViewerContext, ActivityHeatmapDay, ActivityYearsResponse, Project, UserSkill, Experience, Education, Achievement, Certificate } from '@/types/profile';
 import { ACTIVITY_STALE_TIME, PROFILE_STALE_TIME, queryKeys } from '@/lib/queryKeys';
+import { getStructuredApiError, isTerminalSafetyError } from '@/lib/api/errors';
+import { SAFETY_STATE_CHANGED_EVENT } from '@/lib/socket';
+import { removeProfileQueries } from '@/lib/safety/clientCleanup';
 
 interface ProfilePageProps {
   userId?: string; // If not provided, shows current user's profile
@@ -76,6 +79,7 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
   const [loading, setLoading] = useState(() => !cachedProfile);
   const [error, setError] = useState<string | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
+  const [isUnavailable, setIsUnavailable] = useState(false);
 
   // Modals
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -103,6 +107,22 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
   const [availableYears, setAvailableYears] = useState<ActivityYearsResponse | null>(
     () => cachedActivityYears
   );
+
+  const markProfileUnavailable = useCallback((knownProfile?: FullProfileResponse | null) => {
+    removeProfileQueries(queryClient, [
+      targetUserId || '',
+      knownProfile?.user.id || '',
+      knownProfile?.user.username || '',
+      knownProfile?.user.username ? `@${knownProfile.user.username}` : '',
+    ]);
+    setProfile(null);
+    setActivityData([]);
+    setAvailableYears(null);
+    setIsPrivate(false);
+    setIsUnavailable(true);
+    setError('This profile is unavailable.');
+    setLoading(false);
+  }, [queryClient, targetUserId]);
 
   const commitProfile = useCallback((nextProfile: FullProfileResponse) => {
     setProfile(nextProfile);
@@ -397,6 +417,7 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
       setActivityData([]);
       setAvailableYears(null);
       setLoading(true);
+      setIsUnavailable(false);
       return;
     }
 
@@ -410,6 +431,7 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
     setLoading(false);
     setError(null);
     setIsPrivate(false);
+    setIsUnavailable(false);
   }, [queryClient, targetUserId]);
 
   // Fetch profile data
@@ -446,6 +468,7 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
     }
     setError(null);
     setIsPrivate(false);
+    setIsUnavailable(false);
 
     try {
       console.log('Fetching profile for:', targetUserId);
@@ -485,20 +508,13 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
         console.error('Deferred profile bundle failed:', bundleError);
       });
     } catch (err: unknown) {
-      const error = err as {
-        response?: {
-          status?: number;
-          data?: { error?: string };
-        };
-        message?: string;
-      };
+      const structured = getStructuredApiError(err);
+      const error = err as { response?: { status?: number; data?: { error?: string } }; message?: string };
 
-      console.error('Failed to fetch profile:', error);
-      console.error('Error details:', {
-        status: error.response?.status,
-        data: error.response?.data,
-        message: error.message,
-      });
+      if (isTerminalSafetyError(err)) {
+        markProfileUnavailable();
+        return;
+      }
 
       if (error.response?.status === 403) {
         setIsPrivate(true);
@@ -517,11 +533,25 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
         }
         setError('User not found.');
       } else {
-        setError(error.response?.data?.error || error.message || 'Failed to load profile.');
+        setError(structured.message || 'Failed to load profile.');
       }
       setLoading(false);
     }
-  }, [authUser, commitCoreProfile, commitProfile, isAuthenticated, isOwner, queryClient, targetUserId, userId]);
+  }, [authUser, commitCoreProfile, commitProfile, isAuthenticated, isOwner, markProfileUnavailable, queryClient, targetUserId, userId]);
+
+  useEffect(() => {
+    if (!targetUserId || isOwner) return;
+    const handleSafetyStateChanged = () => {
+      removeProfileQueries(queryClient, [targetUserId]);
+      setProfile(null);
+      setActivityData([]);
+      setAvailableYears(null);
+      setLoading(true);
+      void fetchProfile();
+    };
+    window.addEventListener(SAFETY_STATE_CHANGED_EVENT, handleSafetyStateChanged);
+    return () => window.removeEventListener(SAFETY_STATE_CHANGED_EVENT, handleSafetyStateChanged);
+  }, [fetchProfile, isOwner, queryClient, targetUserId]);
 
   useEffect(() => {
     void fetchProfile({ background: true });
@@ -605,6 +635,25 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
     return <ProfileSkeleton />;
   }
 
+  if (isUnavailable) {
+    return (
+      <div className="min-h-screen bg-white dark:bg-neutral-950 flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center max-w-md mx-auto px-4"
+        >
+          <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
+            <Lock className="w-10 h-10 text-gray-500 dark:text-neutral-400" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Profile unavailable</h2>
+          <p className="text-gray-600 dark:text-neutral-400 mb-6">This profile is unavailable.</p>
+          <Button onClick={() => { window.location.href = '/'; }}>Back to home</Button>
+        </motion.div>
+      </div>
+    );
+  }
+
   if (isPrivate) {
     return (
       <div className="min-h-screen bg-white dark:bg-neutral-950 flex items-center justify-center">
@@ -669,6 +718,7 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
         viewerContext={profile.viewerContext}
         isOwner={!!isOwner}
         onViewerContextChange={handleViewerContextChange}
+        onProfileUnavailable={() => markProfileUnavailable(profile)}
         onEditProfile={() => setEditModalOpen(true)}
         onEditAvatar={() => setAvatarModalOpen(true)}
         onEditBanner={() => setBannerModalOpen(true)}

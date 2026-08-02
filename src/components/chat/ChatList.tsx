@@ -13,7 +13,7 @@ import {
   type Message,
 } from '@/lib/api/chat';
 import { searchUsersForMention, type MentionUser } from '@/lib/api/mentions';
-import { initializeSocket } from '@/lib/socket';
+import { initializeSocket, SAFETY_STATE_CHANGED_EVENT } from '@/lib/socket';
 import { format, isToday, isThisWeek, isThisYear } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { UserAvatar } from '@/components/ui/UserAvatar';
@@ -36,6 +36,8 @@ import {
 import Link from 'next/link';
 import { CHAT_SYNC_EVENT } from './ChatOutboxCoordinator';
 import { Virtuoso } from 'react-virtuoso';
+import { removeUnavailableConversations } from '@/lib/safety/clientCleanup';
+import { getStructuredApiError, isTerminalSafetyError } from '@/lib/api/errors';
 
 const TYPING_INDICATOR_TIMEOUT_MS = 4000;
 const PEOPLE_SEARCH_DEBOUNCE_MS = 300;
@@ -260,6 +262,13 @@ export default function ChatList({
       }
 
       const result = await getConversations(30, cursor);
+      if (result.unavailableConversationIds?.length) {
+        await removeUnavailableConversations({
+          queryClient,
+          ownerId: currentUserId,
+          conversationIds: result.unavailableConversationIds,
+        });
+      }
 
       if (cursor) {
         setConversationState((previousConversations) => {
@@ -288,7 +297,7 @@ export default function ChatList({
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [currentUserId, setConversationState]);
+  }, [currentUserId, queryClient, setConversationState]);
 
   useEffect(() => {
     if (!currentUserId) {
@@ -444,6 +453,17 @@ export default function ChatList({
     const handleChatSync = (event: Event) => {
       const response = (event as CustomEvent<ChatSyncResponse>).detail;
       if (!response) return;
+      const unavailableIds = new Set(response.unavailableConversationIds ?? []);
+      if (unavailableIds.size > 0) {
+        setConversationState((previousConversations) =>
+          previousConversations.filter((conversation) => !unavailableIds.has(conversation.id))
+        );
+        setTypingConversationIds((previousIds) => {
+          const nextIds = new Set(previousIds);
+          unavailableIds.forEach((conversationId) => nextIds.delete(conversationId));
+          return nextIds;
+        });
+      }
       const authoritativeConversationIds = new Set(
         response.conversations.map((conversation) => conversation.id)
       );
@@ -451,7 +471,9 @@ export default function ChatList({
       if (response.conversations.length > 0 || response.statusChanges.length > 0) {
         setConversationState((previousConversations) => {
           const conversationMap = new Map(
-            previousConversations.map((conversation) => [conversation.id, conversation])
+            previousConversations
+              .filter((conversation) => !unavailableIds.has(conversation.id))
+              .map((conversation) => [conversation.id, conversation])
           );
           response.conversations.forEach((conversation) => {
             conversationMap.set(conversation.id, conversation);
@@ -493,6 +515,14 @@ export default function ChatList({
       window.removeEventListener(CHAT_SYNC_EVENT, handleChatSync);
     };
   }, [currentUserId, fetchConversations, selectedConversationId, setConversationState]);
+
+  useEffect(() => {
+    const handleSafetyStateChanged = () => {
+      void fetchConversations(undefined, true);
+    };
+    window.addEventListener(SAFETY_STATE_CHANGED_EVENT, handleSafetyStateChanged);
+    return () => window.removeEventListener(SAFETY_STATE_CHANGED_EVENT, handleSafetyStateChanged);
+  }, [fetchConversations]);
 
   // Listen for typing indicators and live presence to keep conversation rows fresh
   useEffect(() => {
@@ -641,7 +671,16 @@ export default function ChatList({
       const conversation = await getOrCreateConversation(person.id);
       handleSelectConversation(conversation);
     } catch (startError) {
-      console.error('Failed to start conversation:', startError);
+      const terminal = isTerminalSafetyError(startError);
+      setError(terminal
+        ? 'This conversation is unavailable.'
+        : getStructuredApiError(startError).message || 'Unable to start this conversation.');
+      if (terminal) {
+        queryClient.removeQueries({ queryKey: ['chat', 'people-search'] });
+        window.dispatchEvent(new CustomEvent(SAFETY_STATE_CHANGED_EVENT, {
+          detail: { reason: 'interaction_policy_changed' },
+        }));
+      }
     } finally {
       setStartingChatUserId(null);
     }

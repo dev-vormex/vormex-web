@@ -3,11 +3,15 @@ import Cookies from 'js-cookie';
 import { API_URL } from '@/lib/utils/constants';
 import { removeToken } from '@/lib/auth/authHelpers';
 import { getInstallHeaders } from '@/lib/device/installId';
+import { createSingleFlightCoordinator } from './singleFlight';
 
 const CSRF_COOKIE = 'vx_csrf';
 const AUTH_PRESENT_COOKIE = 'vx_auth_present';
 const UNSAFE_METHODS = new Set(['post', 'put', 'patch', 'delete']);
 const API_TIMEOUT_MS = 15_000;
+const AUTH_REFRESH_LOCK = 'vormex-auth-refresh';
+const AUTH_REFRESH_EPOCH_KEY = 'vx_auth_refresh_epoch';
+const refreshCoordinator = createSingleFlightCoordinator<void>();
 
 interface RetriableRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
@@ -35,6 +39,62 @@ function redirectToLoginIfNeeded(isAuthRequest: boolean): Promise<never> | null 
   }
 
   return null;
+}
+
+function readRefreshEpoch(): number {
+  try {
+    return Number(window.localStorage.getItem(AUTH_REFRESH_EPOCH_KEY) || 0);
+  } catch {
+    return 0;
+  }
+}
+
+function writeRefreshEpoch(): void {
+  try {
+    window.localStorage.setItem(AUTH_REFRESH_EPOCH_KEY, String(Date.now()));
+  } catch {
+    // Cookie refresh remains valid when storage is unavailable.
+  }
+}
+
+async function performSessionRefresh(requestFailedAt: number): Promise<void> {
+  // A different tab may have refreshed while this request was waiting for the lock.
+  if (readRefreshEpoch() >= requestFailedAt) return;
+
+  const refreshResponse = await axios.post(
+    `${API_URL}/auth/refresh`,
+    {},
+    {
+      withCredentials: true,
+      timeout: API_TIMEOUT_MS,
+      headers: {
+        'Content-Type': 'application/json',
+        ...getInstallHeaders(),
+        ...(Cookies.get(CSRF_COOKIE)
+          ? { 'X-CSRF-Token': Cookies.get(CSRF_COOKIE) as string }
+          : {}),
+      },
+    }
+  );
+  const csrfToken = refreshResponse.data?.csrfToken;
+  if (csrfToken) {
+    Cookies.set(CSRF_COOKIE, csrfToken, {
+      expires: 30,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    });
+  }
+  writeRefreshEpoch();
+}
+
+async function refreshBrowserSession(requestFailedAt: number): Promise<void> {
+  return refreshCoordinator.run(async () => {
+    if (typeof navigator !== 'undefined' && navigator.locks) {
+      await navigator.locks.request(AUTH_REFRESH_LOCK, () => performSessionRefresh(requestFailedAt));
+      return;
+    }
+    await performSessionRefresh(requestFailedAt);
+  });
 }
 
 // Create axios instance with base configuration
@@ -104,29 +164,7 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        const refreshResponse = await axios.post(
-          `${API_URL}/auth/refresh`,
-          {},
-          {
-            withCredentials: true,
-            timeout: API_TIMEOUT_MS,
-            headers: {
-              'Content-Type': 'application/json',
-              ...getInstallHeaders(),
-              ...(Cookies.get(CSRF_COOKIE)
-                ? { 'X-CSRF-Token': Cookies.get(CSRF_COOKIE) as string }
-                : {}),
-            },
-          }
-        );
-        const csrfToken = refreshResponse.data?.csrfToken;
-        if (csrfToken) {
-          Cookies.set(CSRF_COOKIE, csrfToken, {
-            expires: 30,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-          });
-        }
+        await refreshBrowserSession(Date.now());
         return apiClient(originalRequest);
       } catch {
         // Fall through to the normal unauthenticated cleanup.
