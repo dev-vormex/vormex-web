@@ -256,16 +256,15 @@ export function StoryCarousel({ onOpenStory, onCreateStory }: StoryCarouselProps
           />
         ))}
 
-        {/* Empty state — fills the row instead of leaving a blank void */}
+        {/*
+          Empty state. Deliberately a single quiet line rather than a dashed
+          panel: the panel version claimed the full width of the row to say
+          nothing, which read as the loudest element on an empty feed.
+        */}
         {otherStoryGroups.length === 0 && (
-          <div className="flex min-h-[72px] min-w-[210px] flex-1 flex-col justify-center rounded-2xl border border-dashed border-gray-200 px-4 dark:border-neutral-800">
-            <p className="text-xs font-semibold text-gray-500 dark:text-neutral-400">
-              No stories from your network yet
-            </p>
-            <p className="mt-0.5 text-[11px] text-gray-400 dark:text-neutral-500">
-              Share what you&apos;re working on and start the streak
-            </p>
-          </div>
+          <p className="flex flex-1 items-center px-1 text-[11.5px] leading-snug text-gray-400 dark:text-neutral-500">
+            Post a story to start your streak — your network&apos;s stories show up here.
+          </p>
         )}
       </div>
     </div>

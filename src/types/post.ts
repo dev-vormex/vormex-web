@@ -147,11 +147,69 @@ export interface Comment {
   updatedAt: string;
 }
 
+/**
+ * Server-ranked recommendation modules the feed injects between posts.
+ * The backend picks both the module type and the feed position (see
+ * selectHomeRecommendationModules), so the client only renders what it is told
+ * to rather than hardcoding a fixed stack of rails above the feed.
+ */
+export type FeedModuleType = 'PEOPLE' | 'REELS' | 'JOBS' | 'EVENTS' | 'BOOSTED_POST';
+
+export interface FeedModulePerson {
+  id: string;
+  username: string;
+  name: string;
+  headline: string | null;
+  profileImage: string | null;
+  interests?: string[];
+}
+
+export interface FeedModuleReel {
+  id: string;
+  title: string | null;
+  caption: string | null;
+  thumbnailUrl: string | null;
+  authorId: string;
+  viewsCount: number;
+}
+
+export interface FeedModuleJob {
+  id: string;
+  title: string;
+  description: string;
+  skills: string[];
+  company?: string | null;
+  location?: string | null;
+}
+
+export interface FeedModuleEvent {
+  id: string;
+  title: string;
+  description: string | null;
+  startsAt: string;
+  campus: string | null;
+  coverImageUrl: string | null;
+}
+
+export interface FeedModulePlacement {
+  type?: FeedModuleType;
+  /** 1-based index of the post this module renders after. */
+  position: number;
+  reasonCode?: string | null;
+  reasonText?: string | null;
+  /** Present on premium post boosts, which carry a Post rather than a module list. */
+  postId?: string;
+  items?: Array<
+    FeedModulePerson | FeedModuleReel | FeedModuleJob | FeedModuleEvent | Post
+  >;
+}
+
 export interface FeedResponse {
   posts: Post[];
   nextCursor: string | null;
   hasMore?: boolean; // Derived from nextCursor if not provided
   adPlacements?: ManagedAdCreative[];
+  modulePlacements?: FeedModulePlacement[];
 }
 
 export interface CommentsResponse {

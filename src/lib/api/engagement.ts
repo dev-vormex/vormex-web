@@ -104,9 +104,19 @@ export interface DailyMatch {
   profileImage: string | null;
   headline: string | null;
   college: string | null;
-  interests: string[];
+  /**
+   * Optional: the daily-matches and hidden-gem endpoints do not include this
+   * field in their response mappings at all, so it is undefined in practice.
+   * It was previously typed as a required `string[]`, which let callers write
+   * `match.interests.slice(...)` and crash at runtime.
+   */
+  interests?: string[];
   isOnline: boolean;
-  replyRate: number;
+  /**
+   * Optional, and currently NOT a measured value — the backend fills it with
+   * `Math.random()`. Do not build new UI on it. See engagement.controller.ts.
+   */
+  replyRate?: number;
   verified?: boolean;
   isVerified?: boolean;
   profileBadgeStyle?: string | null;

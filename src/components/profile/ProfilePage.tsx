@@ -60,7 +60,6 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
     ? (isAuthenticated && authUser?.id ? authUser.id : null)
     : userId;
   const targetUserId = resolvedUserId ?? (isAuthenticated && authUser?.id ? authUser.id : null);
-  const isOwner = isAuthenticated && authUser && authUser.id === targetUserId;
 
   const cachedBundle = targetUserId
     ? queryClient.getQueryData<FullProfileResponse>(queryKeys.profile(targetUserId)) ?? null
@@ -80,6 +79,19 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
   const [error, setError] = useState<string | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
   const [isUnavailable, setIsUnavailable] = useState(false);
+
+  /*
+   * `targetUserId` is whatever the URL carried — usually a username, sometimes a
+   * UUID. Comparing it to `authUser.id` alone reported "not the owner" for your
+   * own profile whenever you arrived by username (e.g. /profile/<your-handle>),
+   * hiding every edit control. Match the loaded profile's identity too.
+   */
+  const isOwner = Boolean(
+    isAuthenticated &&
+      authUser?.id &&
+      (authUser.id === targetUserId ||
+        (profile ? profile.user.id === authUser.id : false))
+  );
 
   // Modals
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -436,11 +448,13 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
 
   // Fetch profile data
   const fetchProfile = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
+    // `isOwner` is deliberately not read here: it now derives from the loaded
+    // profile, so depending on it would rebuild this callback once the profile
+    // arrives and kick off a redundant background refetch.
     console.log('ProfilePage - fetchProfile called', {
       targetUserId,
       authUser,
       isAuthenticated,
-      isOwner,
     });
 
     if (!targetUserId) {
@@ -537,7 +551,7 @@ export function ProfilePage({ userId, openEditModalOnMount }: ProfilePageProps) 
       }
       setLoading(false);
     }
-  }, [authUser, commitCoreProfile, commitProfile, isAuthenticated, isOwner, markProfileUnavailable, queryClient, targetUserId, userId]);
+  }, [authUser, commitCoreProfile, commitProfile, isAuthenticated, markProfileUnavailable, queryClient, targetUserId, userId]);
 
   useEffect(() => {
     if (!targetUserId || isOwner) return;

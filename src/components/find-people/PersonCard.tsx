@@ -64,7 +64,10 @@ export function PersonCard({
     <motion.article
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative flex aspect-[31/40] min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900"
+      // Height comes from the content, floored so sparse cards still read as
+      // cards. A fixed aspect ratio used to squash the handle and headline
+      // whenever a person had a long name, bio or college.
+      className="relative flex h-full min-h-[22rem] min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900"
     >
       <ProfileBanner imageSrc={person.bannerImageUrl} />
 
@@ -100,7 +103,7 @@ export function PersonCard({
         <ProfileLink
           profileId={profileId}
           onClick={() => onProfileIntent?.(person)}
-          className="group/name flex min-w-0 max-w-full items-center justify-center gap-1.5"
+          className="group/name flex min-w-0 max-w-full shrink-0 items-center justify-center gap-1.5"
         >
           <span className="min-w-0 truncate text-base font-bold text-gray-950 group-hover/name:underline dark:text-white sm:text-lg">
             {displayName}
@@ -113,30 +116,30 @@ export function PersonCard({
         </ProfileLink>
 
         {handle && (
-          <p className="max-w-full truncate text-xs text-gray-500 dark:text-neutral-400">
+          <p className="max-w-full shrink-0 truncate text-xs text-gray-500 dark:text-neutral-400">
             {handle}
           </p>
         )}
 
         {headline ? (
-          <p className="mt-2 line-clamp-2 text-sm leading-5 text-gray-700 dark:text-neutral-300 sm:text-base sm:leading-6">
+          <p className="mt-2 line-clamp-2 shrink-0 text-sm leading-5 text-gray-700 dark:text-neutral-300 sm:text-base sm:leading-6">
             {headline}
           </p>
         ) : null}
 
         {education && (
-          <div className="mt-2 flex max-w-full items-center justify-center gap-1.5 text-gray-500 dark:text-neutral-400">
+          <div className="mt-2 flex max-w-full shrink-0 items-center justify-center gap-1.5 text-gray-500 dark:text-neutral-400">
             <GraduationCap className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span className="truncate text-xs font-medium sm:text-sm">{education}</span>
           </div>
         )}
 
         {visibleTags.length > 0 && (
-          <div className="mt-3 flex w-full min-w-0 flex-nowrap items-center justify-center gap-1.5">
+          <div className="mt-3 flex w-full min-w-0 shrink-0 flex-wrap items-center justify-center gap-1.5">
             {visibleTags.map((tag) => (
               <span
                 key={tag}
-                className="max-w-[27%] truncate rounded-lg bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700 dark:bg-neutral-800 dark:text-neutral-200"
+                className="max-w-full truncate rounded-lg bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700 dark:bg-neutral-800 dark:text-neutral-200"
                 title={tag}
               >
                 {tag}
@@ -151,7 +154,7 @@ export function PersonCard({
         )}
 
         {person.mutualConnections != null && person.mutualConnections > 0 && (
-          <div className="mt-2.5 flex max-w-full items-center justify-center gap-1.5 text-gray-500 dark:text-neutral-400">
+          <div className="mt-2.5 flex max-w-full shrink-0 items-center justify-center gap-1.5 text-gray-500 dark:text-neutral-400">
             <UsersRound className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span className="truncate text-xs sm:text-sm">
               {person.mutualConnections} mutual {person.mutualConnections === 1 ? 'connection' : 'connections'}
@@ -159,7 +162,7 @@ export function PersonCard({
           </div>
         )}
 
-        <div className="mt-auto w-full pt-4">
+        <div className="mt-auto w-full shrink-0 pt-4">
           <RelationshipActionButton
             portrait
             userId={person.id}

@@ -23,14 +23,19 @@ export function buildSecurityHeaders(env: Partial<NodeJS.ProcessEnv> = process.e
     "base-uri 'self'",
     "object-src 'none'",
     "frame-ancestors 'none'",
-    "form-action 'self'",
-    `script-src 'self' 'unsafe-inline'${isProduction ? '' : " 'unsafe-eval'"} https://accounts.google.com https://apis.google.com https://www.gstatic.com`,
+    // Some Razorpay bank/UPI flows hand off with a top-level form POST to their gateway.
+    "form-action 'self' https://api.razorpay.com https://*.razorpay.com",
+    // Razorpay Checkout loads checkout.js from its own host, renders the payment sheet in a
+    // razorpay.com iframe, and reports telemetry to lumberjack. All three need allowing or
+    // the payment sheet silently fails to open.
+    `script-src 'self' 'unsafe-inline'${isProduction ? '' : " 'unsafe-eval'"} https://accounts.google.com https://apis.google.com https://www.gstatic.com https://checkout.razorpay.com`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' data: https://fonts.gstatic.com",
+    "font-src 'self' data: https://fonts.gstatic.com https://cdn.razorpay.com",
     "img-src 'self' data: blob: https:",
     "media-src 'self' blob: https:",
-    `connect-src 'self' ${backendOrigin} ${backendSocketOrigin} https://accounts.google.com https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.b-cdn.net https://*.cloudfront.net`,
-    "frame-src https://accounts.google.com https://www.youtube-nocookie.com",
+    `connect-src 'self' ${backendOrigin} ${backendSocketOrigin} https://accounts.google.com https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.b-cdn.net https://*.cloudfront.net https://api.razorpay.com https://lumberjack.razorpay.com https://lumberjack-cx.razorpay.com`,
+    "frame-src https://accounts.google.com https://www.youtube-nocookie.com https://api.razorpay.com https://checkout.razorpay.com https://*.razorpay.com",
+    "child-src https://api.razorpay.com https://checkout.razorpay.com https://*.razorpay.com",
     "worker-src 'self' blob:",
     ...(isProduction ? ['upgrade-insecure-requests'] : []),
   ];
@@ -40,7 +45,13 @@ export function buildSecurityHeaders(env: Partial<NodeJS.ProcessEnv> = process.e
     { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
     { key: 'X-Content-Type-Options', value: 'nosniff' },
     { key: 'X-Frame-Options', value: 'DENY' },
-    { key: 'Permissions-Policy', value: 'camera=(self), microphone=(self), geolocation=(self), payment=()' },
+    {
+      key: 'Permissions-Policy',
+      // Razorpay's checkout iframe uses the Payment Request API for card and UPI wallets,
+      // so payment is delegated to its origins instead of blocked outright.
+      value:
+        'camera=(self), microphone=(self), geolocation=(self), payment=(self "https://api.razorpay.com" "https://checkout.razorpay.com")',
+    },
     { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
     ...(isProduction
       ? [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }]
@@ -59,6 +70,10 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       { source: '/api/:path*', destination: `${backendUrl}/api/:path*` },
+      // Preserve existing shared/profile URLs while routing through the stable
+      // static profile entry point. Static routes such as /profile/edit win
+      // before this after-files rewrite is evaluated.
+      { source: '/profile/:id', destination: '/profile?user=:id' },
     ];
   },
   async headers() {

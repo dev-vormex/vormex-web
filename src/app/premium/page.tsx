@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -9,15 +9,24 @@ import {
   Check,
   Crown,
   Loader2,
+  Lock,
   Rocket,
-  ShieldCheck,
   Sparkles,
   Zap,
 } from 'lucide-react';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { premiumAPI, type CreatorProState, type PremiumPlanOption, type PremiumSubscription } from '@/lib/api/premium';
+import { openRazorpayCheckout } from '@/lib/payments/razorpay';
 
-type BusyAction = 'checkout' | 'cancel' | 'boost' | 'premium-override' | 'creator-override' | null;
+type BusyAction = 'checkout' | 'cancel' | 'boost' | null;
+type CheckoutStage = 'idle' | 'creating' | 'awaiting-payment' | 'verifying';
+type PremiumTier = 'premium' | 'creator_pro';
+
+const CHECKOUT_STAGE_LABEL: Record<Exclude<CheckoutStage, 'idle'>, string> = {
+  creating: 'Starting secure checkout...',
+  'awaiting-payment': 'Waiting for payment...',
+  verifying: 'Verifying payment...',
+};
 
 function formatDate(value?: string | null): string {
   if (!value) return 'Not scheduled';
@@ -26,12 +35,13 @@ function formatDate(value?: string | null): string {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function getPlanKey(plan: PremiumPlanOption): string {
-  return `${plan.billingCycle}-${plan.amountMinor}`;
-}
-
 function getPlanLabel(plan: PremiumPlanOption): string {
   return plan.billingCycle === 'yearly' ? 'Yearly' : 'Monthly';
+}
+
+function readErrorMessage(err: unknown, fallback: string): string {
+  const response = (err as { response?: { data?: { error?: string } } })?.response;
+  return response?.data?.error || (err as Error)?.message || fallback;
 }
 
 function MetricCard({ label, value }: { label: string; value: string }) {
@@ -59,15 +69,27 @@ function FeatureList({ items }: { items: string[] }) {
 export default function PremiumPage() {
   const [subscription, setSubscription] = useState<PremiumSubscription | null>(null);
   const [creatorPro, setCreatorPro] = useState<CreatorProState | null>(null);
-  const [selectedPlanKey, setSelectedPlanKey] = useState<string>('');
+  const [selectedTier, setSelectedTier] = useState<PremiumTier>('premium');
+  const [selectedBillingCycle, setSelectedBillingCycle] = useState<string>('monthly');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
+  const [checkoutStage, setCheckoutStage] = useState<CheckoutStage>('idle');
+  // Only the first load picks a tier for the member; later refreshes must not override
+  // whatever tab they are looking at.
+  const tierInitializedRef = useRef(false);
+
+  const tierPlans = useMemo<PremiumPlanOption[]>(() => {
+    if (!subscription) return [];
+    return selectedTier === 'creator_pro'
+      ? subscription.creatorPro?.planOptions || []
+      : subscription.planOptions || [];
+  }, [selectedTier, subscription]);
 
   const selectedPlan = useMemo(() => {
-    return subscription?.planOptions.find((plan) => getPlanKey(plan) === selectedPlanKey) || subscription?.planOptions[0];
-  }, [selectedPlanKey, subscription]);
+    return tierPlans.find((plan) => plan.billingCycle === selectedBillingCycle) || tierPlans[0];
+  }, [selectedBillingCycle, tierPlans]);
 
   const loadPremium = useCallback(async () => {
     setError(null);
@@ -78,15 +100,19 @@ export default function PremiumPage() {
       ]);
       setSubscription(nextSubscription);
       setCreatorPro(nextCreatorPro);
-      if (!selectedPlanKey && nextSubscription.planOptions.length > 0) {
-        setSelectedPlanKey(getPlanKey(nextSubscription.planOptions[0]));
+      // Premium members are already past the base tier, so Creator Pro is the useful default.
+      if (!tierInitializedRef.current) {
+        tierInitializedRef.current = true;
+        setSelectedTier(
+          nextSubscription.isPremium && !nextSubscription.isCreatorPro ? 'creator_pro' : 'premium'
+        );
       }
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Could not load premium state.');
+    } catch (err: unknown) {
+      setError(readErrorMessage(err, 'Could not load premium state.'));
     } finally {
       setLoading(false);
     }
-  }, [selectedPlanKey]);
+  }, []);
 
   useEffect(() => {
     loadPremium();
@@ -100,26 +126,89 @@ export default function PremiumPage() {
       const nextMessage = await fn();
       setMessage(nextMessage || 'Premium state updated.');
       await loadPremium();
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Action failed.');
+    } catch (err: unknown) {
+      setError(readErrorMessage(err, 'Action failed.'));
     } finally {
       setBusyAction(null);
     }
   };
 
-  const startCheckout = () => {
-    if (!selectedPlan) return;
-    runAction('checkout', async () => {
+  const tierAlreadyActive =
+    selectedTier === 'creator_pro'
+      ? Boolean(subscription?.isCreatorPro)
+      : Boolean(subscription?.isPremium);
+  const checkoutDisabled =
+    !subscription?.checkoutEnabled ||
+    tierAlreadyActive ||
+    !selectedPlan ||
+    busyAction !== null;
+
+  const startCheckout = async () => {
+    if (!selectedPlan || tierAlreadyActive) return;
+
+    setBusyAction('checkout');
+    setMessage(null);
+    setError(null);
+
+    let checkoutOpened = false;
+
+    try {
+      setCheckoutStage('creating');
       const checkout = await premiumAPI.createCheckout({
-        plan: subscription?.plan === 'creator_pro' ? 'creator_pro' : 'premium',
+        plan: selectedTier,
         billingCycle: selectedPlan.billingCycle,
       });
-      if (checkout.orderId) {
-        return `Checkout order created: ${checkout.orderId}. Browser payment capture is ready to wire to Razorpay Checkout.`;
+
+      if (!checkout.orderId || !checkout.keyId) {
+        throw new Error('Checkout could not be started. Please try again.');
       }
-      return 'Checkout request created.';
-    });
+
+      setCheckoutStage('awaiting-payment');
+      checkoutOpened = true;
+      const outcome = await openRazorpayCheckout({
+        keyId: checkout.keyId,
+        orderId: checkout.orderId,
+        amountMinor: checkout.amountMinor ?? selectedPlan.amountMinor,
+        currency: checkout.currency || selectedPlan.currency,
+        name: checkout.title || 'Vormex',
+        description: checkout.description,
+        prefill: checkout.prefill,
+      });
+
+      if (outcome.status === 'dismissed') {
+        setMessage('Payment cancelled. You have not been charged.');
+        return;
+      }
+
+      if (outcome.status === 'failed') {
+        setError(outcome.message);
+        return;
+      }
+
+      setCheckoutStage('verifying');
+      const verified = await premiumAPI.verifyCheckout(outcome.payment);
+      setMessage(verified.message || 'Payment successful. Your plan is now active.');
+    } catch (err: unknown) {
+      setError(readErrorMessage(err, 'Payment could not be completed.'));
+    } finally {
+      setCheckoutStage('idle');
+      setBusyAction(null);
+      // The Razorpay webhook can activate the plan even when the browser step fails, so
+      // always resync before deciding what the member sees.
+      if (checkoutOpened) {
+        await loadPremium();
+      }
+    }
   };
+
+  const checkoutCtaLabel = (() => {
+    if (checkoutStage !== 'idle') return CHECKOUT_STAGE_LABEL[checkoutStage];
+    if (!subscription?.checkoutEnabled) return 'Checkout unavailable';
+    if (selectedTier === 'creator_pro') {
+      return subscription?.isCreatorPro ? 'Creator Pro active' : 'Upgrade to Creator Pro';
+    }
+    return subscription?.isPremium ? 'Premium active' : 'Go Premium';
+  })();
 
   return (
     <ProtectedRoute>
@@ -149,6 +238,8 @@ export default function PremiumPage() {
             <>
               {(message || error) && (
                 <div
+                  role="status"
+                  aria-live="polite"
                   className={`rounded-lg border px-4 py-3 text-sm ${
                     error
                       ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300'
@@ -175,6 +266,11 @@ export default function PremiumPage() {
                     <div className="text-left lg:text-right">
                       <p className="text-sm text-gray-500 dark:text-neutral-500">Current plan</p>
                       <p className="text-lg font-semibold">{subscription?.plan || 'free'}</p>
+                      {subscription?.isPremium && subscription?.provider && (
+                        <p className="text-xs text-gray-500 dark:text-neutral-500">
+                          via {subscription.provider === 'razorpay' ? 'Razorpay' : subscription.provider}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -194,14 +290,34 @@ export default function PremiumPage() {
                     <Sparkles className="h-5 w-5 text-blue-500" />
                     Choose Plan
                   </h3>
-                  <div className="mt-4 grid gap-2">
-                    {(subscription?.planOptions || []).map((plan) => {
-                      const planKey = getPlanKey(plan);
-                      const selected = selectedPlanKey === planKey;
+
+                  <div className="mt-4 grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1 dark:bg-neutral-950">
+                    {(['premium', 'creator_pro'] as PremiumTier[]).map((tier) => (
+                      <button
+                        key={tier}
+                        type="button"
+                        onClick={() => setSelectedTier(tier)}
+                        aria-pressed={selectedTier === tier}
+                        className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
+                          selectedTier === tier
+                            ? 'bg-white text-gray-950 shadow-sm dark:bg-neutral-800 dark:text-white'
+                            : 'text-gray-600 hover:text-gray-900 dark:text-neutral-400 dark:hover:text-white'
+                        }`}
+                      >
+                        {tier === 'creator_pro' ? 'Creator Pro' : 'Premium'}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 grid gap-2">
+                    {tierPlans.map((plan) => {
+                      const selected = selectedPlan?.billingCycle === plan.billingCycle;
                       return (
                         <button
-                          key={planKey}
-                          onClick={() => setSelectedPlanKey(planKey)}
+                          key={`${selectedTier}-${plan.billingCycle}`}
+                          type="button"
+                          onClick={() => setSelectedBillingCycle(plan.billingCycle)}
+                          aria-pressed={selected}
                           className={`rounded-lg border p-3 text-left transition ${
                             selected
                               ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
@@ -221,21 +337,44 @@ export default function PremiumPage() {
                   </div>
 
                   <button
+                    type="button"
                     onClick={startCheckout}
-                    disabled={!subscription?.checkoutEnabled || busyAction !== null}
+                    disabled={checkoutDisabled}
                     className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {busyAction === 'checkout' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
-                    {subscription?.checkoutEnabled ? subscription?.ctaLabel || 'Go Premium' : 'Checkout unavailable'}
+                    {busyAction === 'checkout' ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Rocket className="h-4 w-4" />
+                    )}
+                    {checkoutCtaLabel}
                   </button>
+
+                  {subscription?.checkoutEnabled ? (
+                    <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-gray-500 dark:text-neutral-500">
+                      <Lock className="h-3 w-3" />
+                      Secure payment by Razorpay
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                      Payments are not available right now. Please try again later.
+                    </p>
+                  )}
+
+                  {subscription?.canManageInGooglePlay && (
+                    <p className="mt-2 text-xs text-gray-500 dark:text-neutral-500">
+                      This plan was bought in the Android app. Manage or cancel it in Google Play.
+                    </p>
+                  )}
 
                   {subscription?.canCancel && (
                     <button
+                      type="button"
                       onClick={() => runAction('cancel', async () => (await premiumAPI.cancelSubscription()).message || null)}
                       disabled={busyAction !== null}
                       className="mt-2 w-full rounded-md border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
                     >
-                      Cancel premium
+                      {busyAction === 'cancel' ? 'Cancelling...' : 'Cancel premium'}
                     </button>
                   )}
                 </div>
@@ -254,21 +393,22 @@ export default function PremiumPage() {
                     <FeatureList items={creatorPro?.access.features || subscription?.creatorPro.features || []} />
                   </div>
                   <div className="mt-4 rounded-lg bg-gray-50 p-3 text-sm dark:bg-neutral-950">
-                    Status: <span className="font-semibold">{creatorPro?.access.canUseCreatorPro ? 'Unlocked' : 'Premium required'}</span>
+                    Status:{' '}
+                    <span className="font-semibold">
+                      {creatorPro?.access.canUseCreatorPro ? 'Unlocked' : 'Not active'}
+                    </span>
                   </div>
-                  {subscription?.developerPremiumOverrideAvailable && (
+                  {!subscription?.isCreatorPro && (
                     <button
-                      onClick={() =>
-                        runAction('creator-override', async () => {
-                          const response = await premiumAPI.setDeveloperCreatorProOverride(!subscription?.isCreatorPro);
-                          return response.message || null;
-                        })
-                      }
-                      disabled={busyAction !== null}
-                      className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md border border-violet-300 px-4 py-2.5 text-sm font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-60 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-950/30"
+                      type="button"
+                      onClick={() => {
+                        setSelectedTier('creator_pro');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md border border-violet-300 px-4 py-2.5 text-sm font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-950/30"
                     >
-                      <ShieldCheck className="h-4 w-4" />
-                      {subscription?.isCreatorPro ? 'Disable Creator Pro Test Mode' : 'Enable Creator Pro Test Mode'}
+                      <Sparkles className="h-4 w-4" />
+                      See Creator Pro pricing
                     </button>
                   )}
                 </div>
@@ -290,6 +430,7 @@ export default function PremiumPage() {
                     Ends: <span className="font-semibold">{formatDate(subscription?.profileBoost?.endsAt)}</span>
                   </div>
                   <button
+                    type="button"
                     onClick={() => runAction('boost', async () => (await premiumAPI.activateProfileBoost(24)).message || null)}
                     disabled={!subscription?.isPremium || busyAction !== null}
                     className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
@@ -297,33 +438,13 @@ export default function PremiumPage() {
                     {busyAction === 'boost' ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}
                     Activate 24h Boost
                   </button>
+                  {!subscription?.isPremium && (
+                    <p className="mt-2 text-xs text-gray-500 dark:text-neutral-500">
+                      Profile boosts need an active premium plan.
+                    </p>
+                  )}
                 </div>
               </section>
-
-              {subscription?.developerPremiumOverrideAvailable && (
-                <section className="rounded-lg border border-dashed border-blue-300 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/20">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h3 className="font-semibold text-blue-950 dark:text-blue-100">Developer Premium Override</h3>
-                      <p className="text-sm text-blue-700 dark:text-blue-300">
-                        Test premium flows locally without a payment provider.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() =>
-                        runAction('premium-override', async () => {
-                          const response = await premiumAPI.setDeveloperPremiumOverride(!subscription.developerPremiumOverrideActive);
-                          return response.message || null;
-                        })
-                      }
-                      disabled={busyAction !== null}
-                      className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-                    >
-                      {subscription.developerPremiumOverrideActive ? 'Disable Test Premium' : 'Enable Test Premium'}
-                    </button>
-                  </div>
-                </section>
-              )}
             </>
           )}
         </div>

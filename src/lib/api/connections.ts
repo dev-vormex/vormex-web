@@ -104,6 +104,18 @@ export async function cancelConnectionRequest(
 }
 
 /**
+ * Cancel whatever request we have outstanding to this person, without needing
+ * to know which row holds it. A surface that painted "Pending" from a cached
+ * payload often has a connection id that is stale or absent; the server resolves
+ * the pair itself and answers with where the two of you actually stand.
+ */
+export async function cancelSentRequestToUser(
+  userId: string
+): Promise<RelationshipMutationResponse> {
+  return apiClient.delete(`/connections/user/${userId}/request`);
+}
+
+/**
  * Remove an existing connection
  */
 export async function removeConnection(

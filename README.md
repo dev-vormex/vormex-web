@@ -56,6 +56,16 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 
 Deploy `vormex-backend` first because the web socket client requires the backend `/api/auth/socket-ticket` endpoint. Then deploy this project with the production values from `.env.example`. The web client exchanges its same-origin session for a short-lived socket ticket.
 
+The checked-in `vercel.json` pins dynamic Next.js compute to Singapore (`sin1`).
+Keep the production API, Postgres, and Redis in Singapore too. Static assets remain
+globally cached by Vercel; the region setting only prevents SSR and same-origin API
+proxy work from defaulting to a US function region.
+
+The Render service region cannot be changed after creation. If an existing API was
+created outside Singapore, create a replacement service from the backend
+`render.yaml`, copy its secret environment variables, validate `/api/health/ready`,
+then update the Vercel backend/socket variables and redeploy this project.
+
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

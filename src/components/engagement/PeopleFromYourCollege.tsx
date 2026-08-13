@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { UserPlus, ChevronRight, Check, Loader2 } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { getPeopleFromSameCollege } from '@/lib/api/people';
-import { sendConnectionRequest } from '@/lib/api/connections';
+import { canonicalPersonRelationship } from '@/lib/findPeoplePolicy';
 import Link from 'next/link';
+import { ConnectButton } from '@/components/connections/ConnectButton';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
 
@@ -14,9 +14,6 @@ import { VerificationBadge } from '@/components/ui/VerificationBadge';
  * Shows users from the same campus (case-insensitive, e.g. NIAT / niat).
  */
 export default function PeopleFromYourCollege() {
-  const [connectingIds, setConnectingIds] = useState<Set<string>>(new Set());
-  const [connectedIds, setConnectedIds] = useState<Set<string>>(new Set());
-
   const { data, isLoading } = useQuery({
     queryKey: ['people-from-college'],
     queryFn: async () => {
@@ -28,26 +25,6 @@ export default function PeopleFromYourCollege() {
   });
 
   const people = data ?? [];
-
-  const handleConnect = async (e: React.MouseEvent, userId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (connectingIds.has(userId) || connectedIds.has(userId)) return;
-
-    setConnectingIds((prev) => new Set([...prev, userId]));
-    try {
-      await sendConnectionRequest(userId);
-      setConnectedIds((prev) => new Set([...prev, userId]));
-    } catch (error) {
-      console.error('Failed to send connection request:', error);
-    } finally {
-      setConnectingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(userId);
-        return next;
-      });
-    }
-  };
 
   if (isLoading && people.length === 0) {
     return (
@@ -74,35 +51,6 @@ export default function PeopleFromYourCollege() {
 
   if (people.length === 0) return null;
 
-  const ConnectButton = ({ userId }: { userId: string }) => {
-    const isConnecting = connectingIds.has(userId);
-    const isConnected = connectedIds.has(userId);
-
-    if (isConnected) {
-      return (
-        <span className="flex items-center gap-1 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-xs font-medium rounded-full flex-shrink-0">
-          <Check className="w-3 h-3" />
-          Sent
-        </span>
-      );
-    }
-
-    return (
-      <button
-        onClick={(e) => handleConnect(e, userId)}
-        disabled={isConnecting}
-        className="flex items-center gap-1 px-3 py-1.5 border border-blue-500 text-blue-600 dark:text-blue-400 text-xs font-medium rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex-shrink-0 disabled:opacity-50"
-      >
-        {isConnecting ? (
-          <Loader2 className="w-3 h-3 animate-spin" />
-        ) : (
-          <UserPlus className="w-3 h-3" />
-        )}
-        Connect
-      </button>
-    );
-  };
-
   return (
     <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-neutral-800">
@@ -112,7 +60,9 @@ export default function PeopleFromYourCollege() {
       </div>
 
       <div className="divide-y divide-gray-100 dark:divide-neutral-800">
-        {people.map((person) => (
+        {people.map((person) => {
+          const relationship = canonicalPersonRelationship(person);
+          return (
           <Link
             key={person.id}
             href={`/profile/${person.username}`}
@@ -151,9 +101,20 @@ export default function PeopleFromYourCollege() {
               )}
             </div>
 
-            <ConnectButton userId={person.id} />
+            {/*
+              Unlike the daily-match rails, this endpoint reports a real
+              relationship, so someone you already asked opens as "Requested"
+              instead of offering Connect a second time.
+            */}
+            <ConnectButton
+              userId={person.id}
+              variant="outline"
+              serverStatus={relationship.status}
+              serverConnectionId={relationship.connectionId}
+            />
           </Link>
-        ))}
+          );
+        })}
       </div>
 
       <Link

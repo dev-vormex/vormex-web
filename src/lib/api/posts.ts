@@ -18,6 +18,13 @@ import type {
 // ============================================
 
 const FEED_REQUEST_TIMEOUT_MS = 30_000;
+/*
+ * A post carries its own media, so it is bounded by the user's upload speed
+ * rather than by server think-time. The 15s interactive default would abort a
+ * video part-way and strand the header progress indicator at whatever fraction
+ * it had reached.
+ */
+const POST_CREATE_TIMEOUT_MS = 5 * 60_000;
 
 /**
  * Get home feed with cursor-based pagination
@@ -27,7 +34,7 @@ const FEED_REQUEST_TIMEOUT_MS = 30_000;
 export async function getFeed(
   cursor?: string,
   limit: number = 20,
-  adOptions?: { adSessionId?: string; adItemOffset?: number },
+  adOptions?: { adSessionId?: string; adItemOffset?: number; refresh?: boolean },
 ): Promise<FeedResponse> {
   const params: Record<string, string | number> = { limit };
   if (cursor) params.cursor = cursor;
@@ -35,10 +42,27 @@ export async function getFeed(
   if (typeof adOptions?.adItemOffset === 'number') params.adItemOffset = adOptions.adItemOffset;
   return apiClient.get('/posts/feed', {
     params,
+    // Opening or reloading the feed is an explicit request for a fresh ranking,
+    // so it skips the server's ranked-page snapshot. Background revalidation
+    // leaves the header off and reuses the snapshot.
+    headers: adOptions?.refresh ? { 'x-vormex-feed-refresh': 'true' } : undefined,
     // A cold production ranking snapshot can outlive the global interactive
     // timeout. Cached posts paint immediately while this request revalidates.
     timeout: FEED_REQUEST_TIMEOUT_MS,
   });
+}
+
+/**
+ * Report posts that entered the viewport.
+ *
+ * The backend ranker demotes already-seen posts; without this the signal stays
+ * empty and every reload produces the same ordering. Ranking stays server-side
+ * — this only ships ids.
+ */
+export async function recordFeedImpressions(
+  postIds: string[]
+): Promise<{ ok: boolean; recorded: number }> {
+  return apiClient.post('/posts/feed/impressions', { postIds });
 }
 
 /**
@@ -56,10 +80,25 @@ export async function getPost(postId: string): Promise<Post> {
 /**
  * Create a new post (supports all post types)
  * Uses FormData for file uploads
+ *
+ * @param onUploadProgress - Receives 0..1 of the request body actually sent.
+ *   Omitted whenever the browser cannot size the body, so callers must treat
+ *   "never called" as indeterminate rather than as no progress.
  */
-export async function createPost(formData: FormData): Promise<Post> {
+export async function createPost(
+  formData: FormData,
+  options?: { onUploadProgress?: (fraction: number) => void }
+): Promise<Post> {
   // Content-Type is automatically handled by the request interceptor for FormData
-  return apiClient.post('/posts', formData);
+  return apiClient.post('/posts', formData, {
+    timeout: POST_CREATE_TIMEOUT_MS,
+    onUploadProgress: options?.onUploadProgress
+      ? (event) => {
+          if (!event.total) return;
+          options.onUploadProgress?.(Math.min(1, event.loaded / event.total));
+        }
+      : undefined,
+  });
 }
 
 /**

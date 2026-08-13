@@ -22,7 +22,10 @@ export function ProfileLink({
 }: ProfileLinkProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const href = `/profile/${encodeURIComponent(profileId)}`;
+  // Use the static profile entry point. Some Next.js dev/runtime combinations
+  // can fail to resolve the dynamic /profile/[id] route even though it exists,
+  // which previously sent valid people cards to the global 404 page.
+  const href = `/profile?user=${encodeURIComponent(profileId)}`;
 
   const prefetch = useCallback(() => {
     if (!profileId) return;

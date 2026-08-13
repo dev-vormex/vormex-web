@@ -23,6 +23,9 @@ import {
   Copy,
   Pencil,
   X,
+  Globe,
+  Users,
+  Lock,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { Post, PollOption } from '@/types/post';
@@ -41,7 +44,21 @@ import { ShareModal } from './ShareModal';
 import ReportModal from '@/components/reports/ReportModal';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
+import { FEED_SURFACE } from '@/components/feed/surface';
+import { usePostImpression } from '@/hooks/usePostImpression';
 import type { ReactionType, ReactionSummary as ReactionSummaryType } from '@/types/post';
+
+/*
+ * Shown only to the author. The audience is enforced server-side, but without
+ * a marker an "Only me" post renders identically to a public one, leaving no
+ * way to confirm the choice actually took effect. Other viewers never see this
+ * — reaching them at all already means they are inside the audience.
+ */
+const VISIBILITY_BADGES = {
+  PUBLIC: { icon: Globe, label: 'Anyone' },
+  CONNECTIONS: { icon: Users, label: 'Connections only' },
+  PRIVATE: { icon: Lock, label: 'Only me' },
+} as const;
 
 interface PostCardProps {
   post: Post;
@@ -64,6 +81,9 @@ export function PostCard({
   onCommentClick,
 }: PostCardProps) {
   const { user } = useAuth();
+  // Reports this post as seen once it is actually on screen, which is what
+  // lets the backend ranker rotate already-seen posts down on the next load.
+  const impressionRef = usePostImpression(post.id);
   const [isLiked, setIsLiked] = useState(post.isLiked);
   const [likesCount, setLikesCount] = useState(post.likesCount);
   const [commentsCount, setCommentsCount] = useState(post.commentsCount);
@@ -92,6 +112,7 @@ export function PostCard({
   const saveInFlightRef = useRef(false);
 
   const isOwnPost = user?.id === post.author.id;
+  const visibilityBadge = post.visibility ? VISIBILITY_BADGES[post.visibility] : undefined;
 
   // Sync like state with real-time updates from parent
   useEffect(() => {
@@ -710,9 +731,10 @@ export function PostCard({
 
   return (
     <motion.div
+      ref={impressionRef}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden"
+      className={FEED_SURFACE}
     >
       {/* Header */}
       <div className="flex items-start justify-between p-4">
@@ -735,8 +757,20 @@ export function PostCard({
             <p className="text-sm text-gray-500 dark:text-neutral-400">
               {post.author.headline || `@${post.author.username}`}
             </p>
-            <p className="text-xs text-gray-400 dark:text-neutral-500">
-              {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
+            <p className="flex items-center gap-1 text-xs text-gray-400 dark:text-neutral-500">
+              <span>{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</span>
+              {isOwnPost && visibilityBadge && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span
+                    className="inline-flex items-center gap-1"
+                    title={`Visible to: ${visibilityBadge.label}`}
+                  >
+                    <visibilityBadge.icon className="h-3 w-3" aria-hidden="true" />
+                    <span>{visibilityBadge.label}</span>
+                  </span>
+                </>
+              )}
             </p>
           </div>
         </ProfileLink>

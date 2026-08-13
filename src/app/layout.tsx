@@ -10,6 +10,7 @@ import { VormexDock } from "@/components/ui/dock";
 import { AgentProvider } from "@/components/agent/AgentContext";
 import { AgentSurface } from "@/components/agent/AgentSurface";
 import EngagementProvider from "@/components/engagement/EngagementProvider";
+import { PostingStatusProvider } from "@/lib/feed/postingStatus";
 import ChatOutboxCoordinator from "@/components/chat/ChatOutboxCoordinator";
 import { Analytics } from "@vercel/analytics/next";
 import { DEFAULT_DESCRIPTION, PUBLIC_SEO_ENABLED, SITE_URL, safeJsonLd } from "@/lib/seo";
@@ -129,11 +130,18 @@ export default function RootLayout({
                 <ChatOutboxCoordinator />
                 <NotificationToastProvider>
                   <AgentProvider>
-                    <EngagementProvider>
-                      {children}
-                    </EngagementProvider>
-                    <AgentSurface />
-                    <VormexDock />
+                    {/*
+                      Wraps the dock as well as the page: the dock's composer can
+                      start an upload from anywhere, and that upload has to
+                      outlive the modal and survive navigation.
+                    */}
+                    <PostingStatusProvider>
+                      <EngagementProvider>
+                        {children}
+                      </EngagementProvider>
+                      <AgentSurface />
+                      <VormexDock />
+                    </PostingStatusProvider>
                   </AgentProvider>
                 </NotificationToastProvider>
               </AuthProvider>

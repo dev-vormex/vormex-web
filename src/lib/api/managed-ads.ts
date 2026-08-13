@@ -1,6 +1,6 @@
 import apiClient from './client';
 
-export type ManagedAdPlacement = 'feed' | 'reels';
+export type ManagedAdPlacement = 'feed' | 'reels' | 'sidebar';
 
 export interface ManagedAdCreative {
   placement: ManagedAdPlacement;
@@ -28,6 +28,16 @@ export interface ManagedAdTrackInput {
 }
 
 export const managedAdsAPI = {
+  /**
+   * The sidebar rail is a single persistent slot, so it is fetched on its own
+   * rather than riding along with a page of feed items.
+   */
+  getSidebarAd: (sessionId: string): Promise<{ ad: ManagedAdCreative | null }> => {
+    return apiClient.get('/ads/sidebar', {
+      params: { sessionId },
+    }) as Promise<{ ad: ManagedAdCreative | null }>;
+  },
+
   trackImpression: (campaignId: string, data?: ManagedAdTrackInput): Promise<{ ok: boolean }> => {
     return apiClient.post(`/ads/${campaignId}/impression`, data || {}) as Promise<{ ok: boolean }>;
   },

@@ -373,9 +373,19 @@ export function VormexDock() {
     return pathname.startsWith(href);
   };
 
+  // The feed renders its own labelled navigation rail from `xl` up
+  // (FeedLeftNav), so the floating dock stands down there rather than showing
+  // two navigations at once.
+  const feedHasOwnNavRail = pathname === '/feed';
+
   return (
     <>
-      <div className="hidden lg:block fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-transparent rounded-2xl px-4 py-2 shadow-lg">
+      <div
+        className={cn(
+          'hidden lg:block fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-transparent rounded-2xl px-4 py-2 shadow-lg',
+          feedHasOwnNavRail && 'xl:hidden'
+        )}
+      >
         <Dock className="items-end pb-3">
           {navItems.map((item) => (
             item.isCreate ? (

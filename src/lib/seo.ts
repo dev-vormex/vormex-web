@@ -1,6 +1,9 @@
-export const SITE_URL = (process.env.NEXT_PUBLIC_BASE_URL || 'https://www.vormex.in')
+/** Public https origin for the live site, used when the current origin is not servable to third parties. */
+export const CANONICAL_SITE_ORIGIN = 'https://www.vormex.in';
+
+export const SITE_URL = (process.env.NEXT_PUBLIC_BASE_URL || CANONICAL_SITE_ORIGIN)
   .replace(/\/+$/, '')
-  .replace('https://vormex.in', 'https://www.vormex.in');
+  .replace('https://vormex.in', CANONICAL_SITE_ORIGIN);
 
 export const SITE_NAME = 'Vormex';
 export const PUBLIC_SEO_ENABLED = (process.env.PUBLIC_SEO_ENABLED || process.env.NEXT_PUBLIC_SEO_ENABLED || 'true') !== 'false';

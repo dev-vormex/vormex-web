@@ -4,7 +4,7 @@
 
 import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { BACKEND_ORIGIN } from '@/lib/utils/constants';
+import { resolveMediaUrl } from '@/lib/utils/media';
 
 interface UserAvatarProps {
   imageSrc?: string | null;
@@ -13,53 +13,6 @@ interface UserAvatarProps {
   className?: string;
   imageClassName?: string;
   fallbackClassName?: string;
-}
-
-function resolveImageSrc(imageSrc?: string | null): string | null {
-  const trimmed = imageSrc?.trim();
-
-  if (
-    !trimmed ||
-    trimmed === 'null' ||
-    trimmed === 'undefined' ||
-    trimmed === 'about:blank'
-  ) {
-    return null;
-  }
-
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  if (trimmed.startsWith('//')) {
-    return `https:${trimmed}`;
-  }
-
-  if (trimmed.startsWith('/')) {
-    if (/^https?:\/\//i.test(BACKEND_ORIGIN)) {
-      return `${BACKEND_ORIGIN}${trimmed}`;
-    }
-
-    if (process.env.NODE_ENV !== 'production') {
-      // Previous local backend: `http://localhost:5000${trimmed}`
-      return `https://vormex-backend.onrender.com${trimmed}`;
-    }
-
-    return trimmed;
-  }
-
-  if (/^(uploads|profiles|avatars|images)\//i.test(trimmed)) {
-    if (/^https?:\/\//i.test(BACKEND_ORIGIN)) {
-      return `${BACKEND_ORIGIN}/${trimmed}`;
-    }
-
-    if (process.env.NODE_ENV !== 'production') {
-      // Previous local backend: `http://localhost:5000/${trimmed}`
-      return `https://vormex-backend.onrender.com/${trimmed}`;
-    }
-  }
-
-  return null;
 }
 
 function getInitial(name?: string | null): string {
@@ -101,7 +54,7 @@ export function UserAvatar({
   imageClassName,
   fallbackClassName,
 }: UserAvatarProps) {
-  const resolvedSrc = useMemo(() => resolveImageSrc(imageSrc), [imageSrc]);
+  const resolvedSrc = useMemo(() => resolveMediaUrl(imageSrc), [imageSrc]);
   const initial = getInitial(name);
 
   return (

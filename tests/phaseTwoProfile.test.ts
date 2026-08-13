@@ -34,10 +34,23 @@ test('web profile paints core before requesting the full bundle', () => {
 test('profile link prefetches route and core data only on navigation intent', () => {
   const link = source('src/components/profile/ProfileLink.tsx');
 
+  assert.match(link, /\/profile\?user=\$\{encodeURIComponent\(profileId\)\}/);
   assert.match(link, /queryKeys\.profileCore\(profileId\)/);
   assert.match(link, /getCoreProfile\(profileId\)/);
   assert.match(link, /onPointerEnter/);
   assert.match(link, /onFocus/);
   assert.match(link, /onTouchStart/);
   assert.doesNotMatch(link, /useEffect/);
+});
+
+test('profile routes fall back to the static query entry point', () => {
+  const page = source('src/app/profile/page.tsx');
+  const config = source('next.config.ts');
+
+  assert.match(page, /searchParams\.get\('user'\)/);
+  assert.match(page, /<ProfilePage userId=\{requestedUser\} \/>/);
+  assert.match(
+    config,
+    /source: '\/profile\/:id', destination: '\/profile\?user=:id'/
+  );
 });

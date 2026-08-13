@@ -32,7 +32,15 @@ import {
 import { Button } from '@/components/ui/Button';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
-import { sendConnectionRequest, cancelConnectionRequest, removeConnection, acceptConnectionRequest } from '@/lib/api/connections';
+import {
+  cancelConnectionRequest,
+  cancelSentRequestToUser,
+  canonicalMutationRelationship,
+  removeConnection,
+  type RelationshipMutationResponse,
+} from '@/lib/api/connections';
+import { hydrateRelationship, publishRelationship, useRelationship } from '@/lib/connections/relationshipStore';
+import { useRelationshipActions } from '@/lib/connections/useRelationshipActions';
 import { followUser, unfollowUser, getMutualInfo, type MutualInfo } from '@/lib/api/follow';
 import { getOrCreateConversation } from '@/lib/api/chat';
 import { ReportModal } from '@/components/ui/ReportModal';
@@ -106,13 +114,37 @@ export function ProfileHeader({
   const mutualSectionRef = useRef<HTMLDivElement>(null);
   const mutualRequestedRef = useRef(false);
 
-  // Connection & Follow state
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(
-    () => normalizeConnectionStatus(viewerContext?.connectionStatus)
+  /*
+   * Connection state lives in the shared relationship store, the same one the
+   * feed rails read. Keeping it in local state here meant a request sent on
+   * this page was invisible to the rails until a full reload, and a request
+   * sent from a rail was invisible here.
+   *
+   * "blocked" is not a relationship the store models, so it stays local and
+   * takes precedence over whatever the store says.
+   */
+  // Derived rather than stored, so it resets by itself when the header is
+  // reused for a different person instead of needing an effect to clear it.
+  const [blockedProfileId, setBlockedProfileId] = useState<string | null>(null);
+  const viewerStatus = normalizeConnectionStatus(viewerContext?.connectionStatus);
+  const viewerConnectionId = viewerContext?.connectionId || null;
+  const isBlocked = viewerStatus === 'blocked' || blockedProfileId === user.id;
+
+  useEffect(() => {
+    if (viewerStatus === 'blocked') return;
+    hydrateRelationship(user.id, { status: viewerStatus, connectionId: viewerConnectionId });
+  }, [user.id, viewerConnectionId, viewerStatus]);
+
+  const relationship = useRelationship(
+    user.id,
+    viewerStatus === 'blocked' ? 'none' : viewerStatus,
+    viewerConnectionId
   );
-  const [connectionId, setConnectionId] = useState<string | null>(
-    () => viewerContext?.connectionId || null
-  );
+  const connectionStatus: ConnectionStatus = isBlocked ? 'blocked' : relationship.status;
+  const connectionId = relationship.connectionId;
+
+  const { connect, accept, failedIds, errorFor } = useRelationshipActions();
+
   const [isFollowing, setIsFollowing] = useState(
     () => Boolean(viewerContext?.isFollowing)
   );
@@ -157,17 +189,27 @@ export function ProfileHeader({
   }, []);
 
   useEffect(() => {
-    setConnectionStatus(normalizeConnectionStatus(viewerContext?.connectionStatus));
-    setConnectionId(viewerContext?.connectionId || null);
     setIsFollowing(Boolean(viewerContext?.isFollowing));
     setIsFollowedBy(Boolean(viewerContext?.isFollowedBy));
-  }, [
-    user.id,
-    viewerContext?.connectionId,
-    viewerContext?.connectionStatus,
-    viewerContext?.isFollowedBy,
-    viewerContext?.isFollowing,
-  ]);
+  }, [user.id, viewerContext?.isFollowedBy, viewerContext?.isFollowing]);
+
+  // Mirror store movement back into the profile payload so the page's own copy
+  // (and its cached query data) stays truthful without a refetch.
+  const lastPublished = useRef<string | null>(null);
+  useEffect(() => {
+    const signature = `${relationship.status}:${relationship.connectionId ?? ''}`;
+    if (lastPublished.current === null) {
+      lastPublished.current = signature;
+      return;
+    }
+    if (lastPublished.current === signature) return;
+    lastPublished.current = signature;
+    onViewerContextChange?.({
+      connectionStatus: relationship.status,
+      connectionId: relationship.connectionId,
+      direction: relationship.status === 'pending_sent' ? 'sent' : null,
+    });
+  }, [onViewerContextChange, relationship]);
 
   useEffect(() => {
     setMutualInfo(null);
@@ -210,85 +252,69 @@ export function ProfileHeader({
     return () => observer.disconnect();
   }, [fetchMutualRelationship, isOwner]);
 
+  /*
+   * All four mutations commit to their outcome before the request settles, and
+   * revert only if the server refuses. The shared store is what the button
+   * renders from, so publishing is all that is needed here — the effect above
+   * relays the change on to the profile payload.
+   */
+
   // Handle connection request
-  const handleConnect = async () => {
-    try {
-      setLoadingConnection(true);
-      const result = await sendConnectionRequest(user.id);
-      setConnectionStatus('pending_sent');
-      setConnectionId(result.connection.id);
-      onViewerContextChange?.({
-        connectionStatus: 'pending_sent',
-        connectionId: result.connection.id,
-        direction: 'sent',
-      });
-      setShowToast(true);
-    } catch (error) {
-      handleProfileActionError(error, 'Unable to send the connection request.');
-    } finally {
-      setLoadingConnection(false);
-    }
-  };
-
-  // Cancel connection request
-  const handleCancelRequest = async () => {
-    if (!connectionId) return;
-    try {
-      setLoadingConnection(true);
-      await cancelConnectionRequest(connectionId);
-      setConnectionStatus('none');
-      setConnectionId(null);
-      onViewerContextChange?.({
-        connectionStatus: 'none',
-        connectionId: null,
-        direction: null,
-      });
-      setShowConnectMenu(false);
-    } catch (error) {
-      handleProfileActionError(error, 'Unable to cancel the connection request.');
-    } finally {
-      setLoadingConnection(false);
-    }
-  };
-
-  // Remove connection
-  const handleRemoveConnection = async () => {
-    if (!connectionId) return;
-    try {
-      setLoadingConnection(true);
-      await removeConnection(connectionId);
-      setConnectionStatus('none');
-      setConnectionId(null);
-      onViewerContextChange?.({
-        connectionStatus: 'none',
-        connectionId: null,
-        direction: null,
-      });
-      setShowConnectMenu(false);
-    } catch (error) {
-      handleProfileActionError(error, 'Unable to remove this connection.');
-    } finally {
-      setLoadingConnection(false);
-    }
+  const handleConnect = () => {
+    setShowToast(true);
+    void connect(user.id);
   };
 
   // Accept connection request
-  const handleAcceptRequest = async () => {
-    if (!connectionId) return;
+  const handleAcceptRequest = () => {
+    void accept(user.id);
+  };
+
+  // Retreats are not covered by the shared actions hook; they only exist here.
+  const retreat = async (
+    run: () => Promise<RelationshipMutationResponse>,
+    fallbackMessage: string
+  ) => {
+    if (loadingConnection) return;
+    const previous = { status: relationship.status, connectionId };
+    setLoadingConnection(true);
+    setShowConnectMenu(false);
+    publishRelationship(user.id, { status: 'none', connectionId: null });
     try {
-      setLoadingConnection(true);
-      await acceptConnectionRequest(connectionId);
-      setConnectionStatus('connected');
-      onViewerContextChange?.({
-        connectionStatus: 'connected',
-        connectionId,
-        direction: null,
-      });
+      // The server answers with where the pair now stands, so a retreat that
+      // raced something else (they accepted first) repaints instead of lying.
+      publishRelationship(user.id, canonicalMutationRelationship(await run(), 'none'));
     } catch (error) {
-      handleProfileActionError(error, 'Unable to accept the connection request.');
+      publishRelationship(user.id, previous);
+      handleProfileActionError(error, fallbackMessage);
     } finally {
       setLoadingConnection(false);
     }
+  };
+
+  /*
+   * Cancel by connection id when we have one, by recipient when we do not.
+   *
+   * The header paints "Pending" from whichever payload arrived first, and a
+   * cached one can carry the status without a usable id. Guarding the whole
+   * retreat on `connectionId` — as this did — turned Cancel into a button that
+   * looked live, fired no request and reported nothing.
+   */
+  const handleCancelRequest = () =>
+    retreat(
+      () => (connectionId
+        ? cancelConnectionRequest(connectionId)
+        : cancelSentRequestToUser(user.id)),
+      'Unable to cancel the connection request.'
+    );
+
+  // Removal genuinely needs the row; there is no by-user form of it.
+  const handleRemoveConnection = () => {
+    if (!connectionId) return;
+    return retreat(
+      () => removeConnection(connectionId),
+      'Unable to remove this connection.'
+    );
   };
 
   // Handle follow/unfollow
@@ -487,15 +513,11 @@ export function ProfileHeader({
                       {connectionStatus === 'none' && (
                         <Button
                           onClick={handleConnect}
-                          disabled={loadingConnection}
+                          title={failedIds.has(user.id) ? errorFor(user.id) : undefined}
                           className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-semibold transition-all text-sm"
                         >
-                          {loadingConnection ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <UserPlus className="w-4 h-4" />
-                          )}
-                          Connect
+                          <UserPlus className="w-4 h-4" />
+                          {failedIds.has(user.id) ? 'Retry' : 'Connect'}
                         </Button>
                       )}
 
@@ -533,15 +555,11 @@ export function ProfileHeader({
                       {connectionStatus === 'pending_received' && (
                         <Button
                           onClick={handleAcceptRequest}
-                          disabled={loadingConnection}
+                          title={failedIds.has(user.id) ? errorFor(user.id) : undefined}
                           className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full font-semibold transition-all text-sm"
                         >
-                          {loadingConnection ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <UserCheck className="w-4 h-4" />
-                          )}
-                          Accept Request
+                          <UserCheck className="w-4 h-4" />
+                          {failedIds.has(user.id) ? 'Retry' : 'Accept Request'}
                         </Button>
                       )}
 
@@ -983,7 +1001,8 @@ export function ProfileHeader({
             userName={user.name}
             userImage={profileImageSrc}
             onBlocked={() => {
-              setConnectionStatus('blocked');
+              setBlockedProfileId(user.id);
+              publishRelationship(user.id, { status: 'none', connectionId: null });
               setIsFollowing(false);
               onProfileUnavailable?.();
             }}

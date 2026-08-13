@@ -72,10 +72,10 @@ export function HiddenGemCard({ gems, onDismiss }: HiddenGemCardProps) {
           </div>
         </div>
 
-        {/* Shared interests */}
-        {gem.interests.length > 0 && (
+        {/* Shared interests — optional; the hidden-gem endpoint omits the field */}
+        {(gem.interests?.length ?? 0) > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-3">
-            {gem.interests.slice(0, 4).map((interest) => (
+            {(gem.interests ?? []).slice(0, 4).map((interest) => (
               <span
                 key={interest}
                 className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-800/50"

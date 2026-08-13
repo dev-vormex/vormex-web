@@ -28,8 +28,8 @@ import {
   Pencil,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/useAuth';
-import { createPost } from '@/lib/api/posts';
 import { searchUsersForMention } from '@/lib/api/posts';
+import { usePostingStatus } from '@/lib/feed/postingStatus';
 import { ImageEditor } from './ImageEditor';
 import { FormattedContent } from './FormattedContent';
 import type { PostType, PostVisibility, CelebrationType, MentionUser } from '@/types/post';
@@ -67,6 +67,7 @@ const CELEBRATION_TYPES: { value: CelebrationType; label: string; emoji: string 
 
 export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostModalProps) {
   const { user } = useAuth();
+  const { submitPost } = usePostingStatus();
   const [postType, setPostType] = useState<PostType>('TEXT');
   const [content, setContent] = useState('');
   const [visibility, setVisibility] = useState<PostVisibility>('PUBLIC');
@@ -563,8 +564,18 @@ export function CreatePostModal({ isOpen, onClose, onPostCreated }: CreatePostMo
           break;
       }
       
-      const createdPost = await createPost(formData);
-      onPostCreated?.(createdPost);
+      /*
+       * Everything below this point is bounded by the user's upload speed, not
+       * by validation, so the upload is handed to the header indicator and the
+       * composer closes right away. Failures surface there with a retry — this
+       * modal is gone by the time they happen, and it still holds the draft's
+       * File handles, so the retry re-sends rather than losing the post.
+       */
+      void submitPost({
+        formData,
+        thumbnailFile: images[0] || video || articleCoverImage || null,
+        onCreated: (createdPost) => onPostCreated?.(createdPost),
+      });
       onClose();
     } catch (err: any) {
       console.error('Error creating post:', err);

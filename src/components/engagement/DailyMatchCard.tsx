@@ -2,12 +2,12 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UserPlus, ChevronRight, X, MessageCircle, Check, Loader2 } from 'lucide-react';
+import { ChevronRight, X, MessageCircle } from 'lucide-react';
 import { useQueries } from '@tanstack/react-query';
 import { getDailyMatches, getHiddenGem, type DailyMatch } from '@/lib/api/engagement';
-import { sendConnectionRequest } from '@/lib/api/connections';
 import Link from 'next/link';
 import { PeopleYouMayKnowSkeleton } from './PeopleYouMayKnowSkeleton';
+import { ConnectButton } from '@/components/connections/ConnectButton';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
 
@@ -22,8 +22,6 @@ const FEED_CACHE_OPTIONS = {
  */
 export default function DailyMatchCard() {
   const [dismissed, setDismissed] = useState(false);
-  const [connectingIds, setConnectingIds] = useState<Set<string>>(new Set());
-  const [connectedIds, setConnectedIds] = useState<Set<string>>(new Set());
 
   const [matchesQuery, gemQuery] = useQueries({
     queries: [
@@ -35,57 +33,8 @@ export default function DailyMatchCard() {
   const matchData = matchesQuery.data ?? null;
   const hiddenGem = gemQuery.data ? (gemQuery.data as { match: DailyMatch; message: string }) : null;
 
-  const handleConnect = async (e: React.MouseEvent, userId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (connectingIds.has(userId) || connectedIds.has(userId)) return;
-    
-    setConnectingIds(prev => new Set([...prev, userId]));
-    try {
-      await sendConnectionRequest(userId);
-      setConnectedIds(prev => new Set([...prev, userId]));
-    } catch (error) {
-      console.error('Failed to send connection request:', error);
-    } finally {
-      setConnectingIds(prev => {
-        const next = new Set(prev);
-        next.delete(userId);
-        return next;
-      });
-    }
-  };
-
   if (matchesQuery.isLoading && !matchData) return <PeopleYouMayKnowSkeleton />;
   if (dismissed || !matchData || matchData.matches.length === 0) return null;
-
-  const ConnectButton = ({ userId }: { userId: string }) => {
-    const isConnecting = connectingIds.has(userId);
-    const isConnected = connectedIds.has(userId);
-    
-    if (isConnected) {
-      return (
-        <span className="flex items-center gap-1 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-xs font-medium rounded-full flex-shrink-0">
-          <Check className="w-3 h-3" />
-          Sent
-        </span>
-      );
-    }
-    
-    return (
-      <button
-        onClick={(e) => handleConnect(e, userId)}
-        disabled={isConnecting}
-        className="flex items-center gap-1 px-3 py-1.5 border border-blue-500 text-blue-600 dark:text-blue-400 text-xs font-medium rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex-shrink-0 disabled:opacity-50"
-      >
-        {isConnecting ? (
-          <Loader2 className="w-3 h-3 animate-spin" />
-        ) : (
-          <UserPlus className="w-3 h-3" />
-        )}
-        Connect
-      </button>
-    );
-  };
 
   return (
     <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden">
@@ -162,7 +111,7 @@ export default function DailyMatchCard() {
               </div>
             </div>
 
-            <ConnectButton userId={match.id} />
+            <ConnectButton userId={match.id} variant="outline" />
           </Link>
         ))}
       </div>
@@ -191,7 +140,7 @@ export default function DailyMatchCard() {
             </div>
             <p className="text-xs text-gray-500 dark:text-neutral-400 truncate">{hiddenGem.match.headline || hiddenGem.match.college}</p>
           </div>
-          <ConnectButton userId={hiddenGem.match.id} />
+          <ConnectButton userId={hiddenGem.match.id} variant="outline" />
         </Link>
       )}
 

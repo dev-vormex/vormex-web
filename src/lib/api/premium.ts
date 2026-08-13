@@ -40,8 +40,6 @@ export interface PremiumSubscription {
   agentLimitReached?: boolean;
   canCancel?: boolean;
   canManageInGooglePlay?: boolean;
-  developerPremiumOverrideAvailable?: boolean;
-  developerPremiumOverrideActive?: boolean;
   planOptions: PremiumPlanOption[];
   entitlements?: Record<string, unknown>;
   profileBoost?: PremiumProfileBoost;
@@ -74,21 +72,28 @@ export interface CreatorProState {
 }
 
 export interface PremiumCheckoutResponse {
-  orderId?: string;
   keyId?: string;
-  amount?: number;
+  orderId?: string;
   amountMinor?: number;
   currency?: string;
-  name?: string;
-  description?: string;
-  prefill?: {
-    name?: string;
-    email?: string;
-    contact?: string;
-  };
+  displayAmount?: string;
   plan?: string;
+  title?: string;
+  description?: string;
   billingCycle?: string;
-  [key: string]: unknown;
+  premiumDurationDays?: number;
+  prefill?: {
+    name?: string | null;
+    email?: string | null;
+    contact?: string | null;
+  };
+  features?: string[];
+}
+
+export interface PremiumVerifyResponse {
+  message?: string;
+  alreadyActivated?: boolean;
+  subscription?: PremiumSubscription;
 }
 
 export const premiumAPI = {
@@ -105,6 +110,14 @@ export const premiumAPI = {
     billingCycle?: string;
   }): Promise<PremiumCheckoutResponse> => {
     return apiClient.post('/premium/checkout', data) as Promise<PremiumCheckoutResponse>;
+  },
+
+  verifyCheckout: (data: {
+    razorpayOrderId: string;
+    razorpayPaymentId: string;
+    razorpaySignature: string;
+  }): Promise<PremiumVerifyResponse> => {
+    return apiClient.post('/premium/verify', data) as Promise<PremiumVerifyResponse>;
   },
 
   cancelSubscription: (): Promise<{ message?: string; subscription?: PremiumSubscription }> => {
@@ -124,18 +137,4 @@ export const premiumAPI = {
     }>;
   },
 
-  setDeveloperPremiumOverride: (
-    enabled: boolean,
-  ): Promise<{ message?: string; subscription?: PremiumSubscription }> => {
-    return apiClient.post('/premium/debug-override', { enabled }) as Promise<{
-      message?: string;
-      subscription?: PremiumSubscription;
-    }>;
-  },
-
-  setDeveloperCreatorProOverride: (enabled: boolean): Promise<CreatorProState & { message?: string }> => {
-    return apiClient.post('/premium/creator-pro/debug-override', { enabled }) as Promise<
-      CreatorProState & { message?: string }
-    >;
-  },
 };

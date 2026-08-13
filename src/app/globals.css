@@ -228,6 +228,33 @@ body {
   animation: shimmer 1.5s infinite;
 }
 
+/*
+ * Upload bar for a post whose body the browser could not size, so there is no
+ * real fraction to render. It sweeps instead of filling, which reads as "still
+ * working" without claiming a position it does not know.
+ */
+@keyframes posting-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.animate-posting-indeterminate {
+  animation: posting-indeterminate 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-posting-indeterminate {
+    animation: none;
+    transform: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
+
 /* 404 Page styles */
 .page_404 {
   padding: 40px 0;

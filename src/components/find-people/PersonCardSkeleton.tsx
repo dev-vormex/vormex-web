@@ -2,7 +2,7 @@
 
 export function PersonCardSkeleton() {
   return (
-    <div className="relative flex aspect-[31/40] animate-pulse flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="relative flex h-full min-h-[22rem] animate-pulse flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <div className="h-20 shrink-0 bg-gray-200 dark:bg-neutral-800" />
       <div className="z-10 flex h-24 shrink-0 justify-center -mt-12">
         <div className="h-24 w-24 rounded-full bg-gray-300 ring-4 ring-white dark:bg-neutral-700 dark:ring-neutral-900" />
